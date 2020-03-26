@@ -25,11 +25,19 @@ DEVICE_DATA={
 LOGGER = logging.getLogger(__name__)
 
 class Client(object):
-    def __init__(self, access_token, on_message=None):
+    def __init__(self, access_token, on_message=None,
+                 on_room_join=None, on_room_leave=None):
         self.access_token = access_token
         self.api = WebexTeamsAPI(access_token=access_token)
+        self.my_emails = []
         self._device_info = None
         self._on_message = on_message
+        self._on_room_join = on_room_join
+        self._on_room_leave = on_room_leave
+        self._rooms = {}
+
+    def get_room_title(self, room_id):
+        return self._rooms.get(room_id, room_id)
         
     def _process_message(self, data):
         if data['data']['eventType'] == 'conversation.activity':
@@ -41,11 +49,42 @@ class Client(object):
                 if message.personEmail in self.my_emails:
                     LOGGER.debug("Ignoring self message")
                 else:
-                    LOGGER.info('Message from %s: %s', message.personEmail, message.text)
+                    LOGGER.info("Received %s message from %s (in '%s'): %s", 
+                                message.roomType,
+                                message.personEmail,
+                                self.get_room_title(message.roomId),
+                                message.text)
                     if self._on_message:
                         self._on_message(message)
+
             elif activity['verb'] == 'add':
-                LOGGER.info("Got ADD")
+                email = activity["object"]["emailAddress"]
+                room = self.api.rooms.get(activity['target']['id'])
+                LOGGER.info("Got ADD for %s in '%s'", 
+                            email, room.title)
+                self._rooms[room.id] = room.title
+                if self._on_room_join:
+                    self._on_room_join(room,
+                                       None if email in self.my_emails else email)
+
+            elif activity['verb'] == 'leave':
+                room = None
+                email = activity["object"]["emailAddress"]
+
+                # If we have left the room, can no longer lookup the room!
+                if email not in self.my_emails:
+                    room = self.api.rooms.get(activity['target']['id'])
+                LOGGER.info("Got LEAVE for %s in '%s'",
+                            email,
+                            room.title if room else "<not available>")
+                if room is None:
+                    self._populate_rooms()
+                if self._on_room_leave:
+                    self._on_room_leave(room,
+                                        None if email in self.my_emails else email)
+
+    def _populate_rooms(self):
+        self._rooms = {r.id: r.title for r in self.api.rooms.list()}
                 
     def _get_device_info(self):
         LOGGER.debug('getting device list')
@@ -68,8 +107,9 @@ class Client(object):
         
     def run(self):
         if self._device_info is None:
-            self._device_info = self._get_device_info()                
+            self._device_info = self._get_device_info()
         self.my_emails = self.api.people.me().emails
+        self._populate_rooms()
             
         async def _run():
             LOGGER.info("Opening websocket connection to %s", self._device_info['webSocketUrl'])
@@ -85,12 +125,12 @@ class Client(object):
                 await ws.send(json.dumps(msg))
                 
                 while True:
-                    message = await ws.recv()
-                    LOGGER.debug("Received raw message: %s", message)
+                    data = await ws.recv()
+                    LOGGER.debug("Received raw data: %s", data)
                     try:
-                        msg = json.loads(message)
+                        msg = json.loads(data)
                         loop = asyncio.get_event_loop()
-                        loop.run_in_executor(None, self._process_message, msg)
+                        await loop.run_in_executor(None, self._process_message, msg)
                     except:
                         LOGGER.exception("An exception occurred while processing message. Ignoring.")
 
