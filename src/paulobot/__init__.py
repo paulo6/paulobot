@@ -1,5 +1,6 @@
 import os
 import logging
+import argparse
 
 import paulobot.webex
 
@@ -9,10 +10,10 @@ LOGGING_FORMAT = '{asctime:<8s} {name:<20s} {levelname:<8s} {message}'
 LOGGING_DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
 
 class PauloBot:
-    def __init__(self):
+    def __init__(self, args):
         with open(os.path.expanduser("~/.paulobot"), "r") as f:
             token = f.read()
-        self._setup_logging()
+        self._setup_logging(level=args.level)
 
         self._webex = paulobot.webex.Client(token,
                                             self._on_message)
@@ -53,7 +54,13 @@ class PauloBot:
 
 
 def main(args):
+    parser = argparse.ArgumentParser(
+        prog="paulobot",
+        description="PauloBot: Office Sports Webex Teams Bot")
+    parser.add_argument("-l", "--level", type=int, default=logging.INFO,
+                        help="Logging level. Lower is more verbose.")
+    args = parser.parse_args(args)
     try:
-        PauloBot().run()
+        PauloBot(args).run()
     except KeyboardInterrupt:
         pass

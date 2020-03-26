@@ -44,6 +44,8 @@ class Client(object):
                     LOGGER.info('Message from %s: %s', message.personEmail, message.text)
                     if self._on_message:
                         self._on_message(message)
+            elif activity['verb'] == 'add':
+                LOGGER.info("Got ADD")
                 
     def _get_device_info(self):
         LOGGER.debug('getting device list')
@@ -84,7 +86,7 @@ class Client(object):
                 
                 while True:
                     message = await ws.recv()
-                    LOGGER.debug("WebSocket Received Message (raw): %s", message)
+                    LOGGER.debug("Received raw message: %s", message)
                     try:
                         msg = json.loads(message)
                         loop = asyncio.get_event_loop()
