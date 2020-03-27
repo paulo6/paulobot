@@ -5,10 +5,10 @@ if [ -z "$PAULOBOT" ]; then
     # This assumes this script hasn't been moved out of the repo
     # Note: this might not work in all cases but this only going to be
     # used in the dev phase so good enough
-    PAULOBOT="$( cd $( dirname "$0" ) && cd .. && pwd )"
+    PAULOBOT="$( cd $( dirname "$0" ) && pwd )"
 fi
 
-cd ${PAULOBOT}/src
+cd ${PAULOBOT}
 
 echo "Running PauloBot at ${PAULOBOT}"
 python3 -m paulobot "$@"
