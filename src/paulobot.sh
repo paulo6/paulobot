@@ -8,5 +8,7 @@ if [ -z "$PAULOBOT" ]; then
     PAULOBOT="$( cd $( dirname "$0" ) && cd .. && pwd )"
 fi
 
+cd ${PAULOBOT}/src
+
 echo "Running PauloBot at ${PAULOBOT}"
 python3 -m paulobot "$@"

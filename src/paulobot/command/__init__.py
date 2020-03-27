@@ -7,8 +7,7 @@ from .. import util
 from . import global_cmds
 from . import defs
 
-from .defs import (ParseError, CommandError,
-                   C_SUC, C_MUC, C_ADMIN, C_SCORE, C_HELP)
+from .defs import (ParseError, CommandError, Flags, MAIN_HELP_PREAMBLE)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -121,7 +120,7 @@ class Handler(object):
         
         # Get the command definition (create a dummy one for help and ?)
         if ctx.cmd_name in ("help", "?"):
-            cmd_def = defs.CmdDef(None, C_SUC | C_MUC,
+            cmd_def = defs.CmdDef(None, Flags.Direct | Flags.Group,
                                   args=["[<string>]"])
         else:
             cmd_def = ctx.handler_class.cmd_defs.get(ctx.cmd_name)
@@ -131,7 +130,7 @@ class Handler(object):
                 ctx.cmd_name = cmd_def.alias
                 cmd_def = ctx.handler_class.cmd_defs.get(ctx.cmd_name)
 
-        if cmd_def is None or (cmd_def.has_flag(C_ADMIN) 
+        if cmd_def is None or (cmd_def.has_flag(Flags.Admin) 
                                and not msg.user.is_admin):
             # Use safe_string to handle any strange characters that have
             # been sent
@@ -139,17 +138,17 @@ class Handler(object):
                               .format("group-chat" if msg.is_group 
                                       else "direct-chat", 
                                       util.safe_string(ctx.cmd_name)))
-            if cmd_def is not None and cmd_def.has_flag(C_ADMIN):
+            if cmd_def is not None and cmd_def.has_flag(Flags.Admin):
                 LOGGER.info("{} just attempted to use admin command: {}"
                             .format(str(msg.user), 
                                     util.safe_string(msg.body)))
-        elif msg.is_group and not cmd_def.has_flag(C_MUC):
+        elif msg.is_group and not cmd_def.has_flag(Flags.Group):
             msg.reply_to_user("{} does not have a group-chat version"
                                 .format(util.safe_string(ctx.cmd_name)))
-        elif not msg.is_group and not cmd_def.has_flag(C_SUC):
+        elif not msg.is_group and not cmd_def.has_flag(Flags.Direct):
             msg.reply_to_user("{} does not have a direct-chat version"
                                 .format(util.safe_string(ctx.cmd_name)))
-        elif cmd_def.has_flag(C_SCORE) and not ctx.handler_class.has_score_support:
+        elif cmd_def.has_flag(Flags.Score) and (not ctx.sport or not ctx.sport.has_scores):
             msg.reply_to_user("Sorry, this command is not supported for "
                               "sports without scoring support")
         else:
@@ -178,7 +177,7 @@ class Handler(object):
                 elif ctx.cmd_name == "?":
                     self._handle_question(c_msg, ctx.handler_class)
                 else:
-                    if cmd_def.has_flag(C_ADMIN):
+                    if cmd_def.has_flag(Flags.Admin):
                         LOGGER.warning("User {} executing admin command '{}'"
                                        .format(str(msg.user), 
                                                util.safe_string(msg.body)))
@@ -270,17 +269,18 @@ class Handler(object):
             self._handle_help_cmd(user, "global",
                                   ctx.handler_class, ctx.sub_cmds[0])
         elif len(ctx.sub_cmds) == 1:
-            self._handle_help_class(user, ctx.sub_cmds[0], ctx.handler_class)
+            self._handle_help_class(user, ctx)
         elif len(ctx.sub_cmds) > 1:
             self._handle_help_cmd(user, ctx.sub_cmds[0],
                                   ctx.handler_class, ctx.sub_cmds[1])
         else:
-            self._handle_help_class(user, "global", ctx.handler_class)
+            global_help = self._get_help_for_class(user, ctx)
+            help = MAIN_HELP_PREAMBLE.format("", "", global_help)
+            self.send_html_msg(user, help)
 
-    def _handle_help_class(self, user, group_name, handler_class):
-        help = "Help for {} commands".format(group_name)
-
-        cmd_defs = sorted(handler_class.cmd_defs.items(),
+    def _get_help_for_class(self, user, ctx):
+        help = ""
+        cmd_defs = sorted(ctx.handler_class.cmd_defs.items(),
                           key=operator.itemgetter(0))
 
         def add_cmds(flag, is_group):
@@ -289,13 +289,13 @@ class Handler(object):
                 if cmd_def.alias is not None:
                     continue
 
-                if cmd_def.has_flag(C_ADMIN) and not user.is_admin:
+                if cmd_def.has_flag(Flags.Admin) and not user.is_admin:
                     continue
             
                 if (cmd_def.desc is None 
                     or not cmd_def.has_flag(flag)
-                    or (not handler_class.has_score_support 
-                        and cmd_def.has_flag(C_SCORE))):
+                    or ((not ctx.sport or not ctx.sport.has_scores)
+                        and cmd_def.has_flag(Flags.Score))):
                     continue
                 
                 if is_group and cmd_def.muc_desc is not None:
@@ -306,19 +306,24 @@ class Handler(object):
                 help += "\n   {: <12} {}".format(cmd_name, desc)
             return help
 
-        extra_info = handler_class.help_info
+        extra_info = ctx.handler_class.help_info
         if extra_info is not None:
             help += "\n" + extra_info
 
         help += "\n\nDirect-chat commands:"
         help += "\n-------------------"
-        help += add_cmds(C_SUC, False)
+        help += add_cmds(Flags.Direct, False)
 
         help += "\n\nGroup-chat commands:"
         help += "\n-------------------"
-        help += add_cmds(C_MUC, True)
+        help += add_cmds(Flags.Group, True)
         help += ("\n\nType 'help {}<cmd>' for more details about a command"
-                 .format("" if handler_class == self._global_handler else f"{group_name} "))
+                 .format("" if not ctx.sub_cmds else f"{ctx.sub_cmds[0]} "))
+        return help
+
+    def _handle_help_class(self, user, ctx):
+        help = "Help for {} commands".format(ctx.sub_cmds[0])
+        help += self._get_help_for_class(user, ctx)
 
         self.send_html_msg(user, help)
 
@@ -340,7 +345,7 @@ class Handler(object):
             cmd_def = handler_class.cmd_defs[cmd]
 
         # See whether this cmd_def handles its own help
-        if cmd_def.has_flag(C_HELP):
+        if cmd_def.has_flag(Flags.Help):
             help_msg = defs.CMessage(user, cmd_def)
             help_msg.parse_args(["help"])
             handler_class.handle_command(cmd, help_msg)
@@ -351,9 +356,9 @@ class Handler(object):
             help += "\n  group-chat usage: " + cmd_def.muc_desc
         else:
             flags = []
-            if cmd_def.has_flag(C_SUC):
+            if cmd_def.has_flag(Flags.Direct):
                 flags.append("direct-chat")
-            if cmd_def.has_flag(C_MUC):
+            if cmd_def.has_flag(Flags.Group):
                 flags.append("group-chat")
 
             help += "\n  {} usage: {}".format(" & ".join(flags), cmd_def.desc)
@@ -398,22 +403,22 @@ class Handler(object):
         if c_msg.room is not None:
             cmds = ((cmd, cmd_def)
                         for cmd, cmd_def in handler_class.cmd_defs.items()
-                        if cmd_def.has_flag(C_MUC))
+                        if cmd_def.has_flag(Flags.Group))
         else:
             cmds = ((cmd, cmd_def)
                         for cmd, cmd_def in handler_class.cmd_defs.items()
-                        if cmd_def.has_flag(C_SUC))
+                        if cmd_def.has_flag(Flags.Direct))
 
         # Filter out Admin ones
         cmds = ((cmd, cmd_def)
                     for cmd, cmd_def in cmds
-                    if c_msg.user.is_admin or not cmd_def.has_flag(C_ADMIN))
+                    if c_msg.user.is_admin or not cmd_def.has_flag(Flags.Admin))
 
         # Filter out non-score ones
-        if not handler_class.has_score_support:
+        if not c_msg.sport or not c_msg.sport.has_scores:
             cmds = ((cmd, cmd_def) 
                         for cmd, cmd_def in cmds
-                        if not cmd_def.has_flag(C_SCORE))
+                        if not cmd_def.has_flag(Flags.Score))
 
         # Filter out hidden ones
         cmds = ((cmd, cmd_def) 

@@ -7,17 +7,12 @@ from collections import defaultdict
 from .. import util
 
 from . import defs 
-from .defs import (CommandError,
-                   CmdDef, C_SUC, C_MUC, C_ADMIN, C_SCORE, C_HELP)
-
-# Sports modules that are used by this module. Used when reloading plugin.
-USED_MODULES = ["dashboard", "database", "util", "command.defs"]
-
+from .defs import (CommandError, Flags, CmdDef)
 
 # Global command list (e.g. "sports xxx")
 _CMDS_GLOBAL = {
     'time'          : CmdDef('Show times',
-                             C_SUC | C_MUC),
+                             Flags.Direct | Flags.Group),
 }
 
 

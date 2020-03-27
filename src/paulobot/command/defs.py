@@ -4,6 +4,7 @@
 import datetime
 import logging
 import re
+import enum
 from collections import namedtuple
 from collections.abc import MutableMapping
 
@@ -37,18 +38,39 @@ TIME_FORMATS = [
 
 
 # Player icons
-DREAM_ICON = ":heart:"
-CREAM_ICON = ":poop:"
-CHAMP_ICON = ":star:"
-ACTIVE_ICON = ":coffee:"
+class Icons(enum.Enum):
+    Dream = ":heart:"
+    Cream = ":poop:"
+    Champ = ":star:"
+    Active = ":coffee:"
 
 
 # Command flags
-C_SUC    = 0x01
-C_MUC    = 0x02
-C_ADMIN  = 0x04
-C_SCORE  = 0x08
-C_HELP   = 0x10
+class Flags(enum.IntFlag):
+    Direct = 0x01
+    Group  = 0x02
+    Admin  = 0x04
+    Score  = 0x08
+    Help   = 0x10
+
+
+MAIN_HELP_PREAMBLE = """Welcome to PauloBot!
+
+PauloBot's purpose in life is to help you organise games in the office, and track results.
+
+
+The various sports that PauloBot supports are listed below:
+{}
+Type 'help <sport>' for details about sports commands
+
+
+The following playing areas are available for your location:
+{}
+Type 'help <area>' for details about area commands.
+
+
+The following global commands are also available: {}
+"""
 
 
 class BadArgValue(Exception):
@@ -89,7 +111,7 @@ class CmdDef(object):
         if alias is not None:
             return
 
-        if self.has_flag(C_ADMIN):
+        if self.has_flag(Flags.Admin):
             self.desc = "[ADMIN] {}".format(self.desc)
             if self.muc_desc is not None:
                 self.muc_desc = "[ADMIN] {}".format(self.muc_desc)
@@ -734,10 +756,6 @@ class ClassHandlerInterface(object):
     def help_info(self):
         return None
 
-    @property
-    def has_score_support(self):
-        return True
-
     def handle_command(self, cmd_name, c_msg):
         # Get the function and process it
         self.get_cmd_func(cmd_name)(c_msg)
@@ -772,18 +790,18 @@ class ClassHandlerInterface(object):
         if (m_player is not None
             and team_stats.dream_team is not None 
             and m_player in team_stats.dream_team):
-            icons.append(DREAM_ICON)
+            icons.append(Icons.Dream)
         if (m_player is not None
             and team_stats.creamed_team is not None 
             and m_player in team_stats.creamed_team):
-            icons.append(CREAM_ICON)
+            icons.append(Icons.Cream)
 
         leader_board = sport.stats.get_leader_board(include_stats=False)
         if (m_player in leader_board 
             and leader_board.index(m_player) == 0):
-            icons.append(CHAMP_ICON)
+            icons.append(Icons.Champ)
         if m_player == self.get_most_active_player(sport, include_stats=False):
-            icons.append(ACTIVE_ICON)
+            icons.append(Icons.Active)
         return icons
 
     def get_global_player_status(self, g_player):
