@@ -71,8 +71,18 @@ class Handler(object):
         if target in self._global_handler.cmd_defs:
             ctx.handler_class = self._global_handler
         else:
-            # Search user locations sports and areas
-            for loc in self._pb.loc_manager.get_user_locations(msg.user):
+            # If this message is from a room, then this room is only
+            # associated with a single location, so use that.
+            #
+            # If this is a direct chat message, then need to search
+            # all the user's locations to see which sport/area they
+            # are referring to.
+            if msg.room is not None:
+                locs = (self._pb.loc_manager.get_room_loc(msg.room), )
+            else:
+                locs = self._pb.loc_manager.get_user_locations(msg.user)
+
+            for loc in locs:
                 if target in loc.sports:
                     ctx.handler_class = self._sport_handler
                     ctx.location = loc
