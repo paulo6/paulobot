@@ -2,7 +2,6 @@
 # Global Commands definition (e.g. "sports xxx")
 #
 import datetime
-from collections import defaultdict
 
 from .. import util
 

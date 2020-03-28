@@ -1,7 +1,6 @@
 import logging
 import operator
-
-from collections import namedtuple
+import collections
 
 from .. import util
 from . import global_cmds

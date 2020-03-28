@@ -5,8 +5,7 @@ import datetime
 import logging
 import re
 import enum
-from collections import namedtuple
-from collections.abc import MutableMapping
+import collections
 
 from .. import util
 
@@ -334,10 +333,10 @@ class ArgDef(object):
 
 
 # Wrapper for choice values to also include the name of the sub-arg picked.
-ChoiceVal = namedtuple("ChoiceVal", ["value", "name"])
+ChoiceVal = collections.namedtuple("ChoiceVal", ["value", "name"])
 
 
-class ArgParser(MutableMapping):
+class ArgParser(collections.abc.MutableMapping):
     def __init__(self, cmd_def, values, is_muc, team_size=None):
         # Dictionary of choice name to the matched arg name
         self.choice_name = {}
@@ -396,6 +395,7 @@ class ArgParser(MutableMapping):
             if num > 0:
                 # If this is a choice, record the choice name
                 if isinstance(result, ChoiceVal):
+                    # pylint: disable=no-member
                     self.choice_name[arg_def.name] = result.name
                     result = result.value
 
