@@ -76,7 +76,11 @@ class Handler(object):
             # all the user's locations to see which sport/area they
             # are referring to.
             if msg.room is not None:
-                locs = (self._pb.loc_manager.get_room_loc(msg.room), )
+                loc = self._pb.loc_manager.get_room_location(msg.room)
+                if loc is None:
+                    LOGGER.error(f"Got message from unknown room {msg.room}")
+                    raise HandlerError("Room not associated with a location.")
+                locs = (loc,)
             else:
                 locs = self._pb.loc_manager.get_user_locations(msg.user)
 

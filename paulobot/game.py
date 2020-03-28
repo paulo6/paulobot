@@ -1,17 +1,19 @@
 import enum
 import transitions
 import datetime
+import collections
 
 
 class State(enum.Enum):
-    Empty          = enum.auto()
-    NotQuorate     = enum.auto()
-    Quorate        = enum.auto()
-    WaitingForTime = enum.auto()
-    WaitingForHold = enum.auto()
-    WaitingForArea = enum.auto()
-    PlayerCheck    = enum.auto()
-    Rolling        = enum.auto()
+    Empty           = enum.auto()
+    NotQuorate      = enum.auto()
+    Quorate         = enum.auto()
+    WaitingForTime  = enum.auto()
+    WaitingForHold  = enum.auto()
+    WaitingForArea  = enum.auto()
+    PlayerCheck     = enum.auto()
+    PlayersNotReady = enum.auto()
+    Rolling         = enum.auto()
 
 
 class Trigger:
@@ -116,10 +118,15 @@ GAME_TRANSITIONS = [
         'trigger': Trigger.AreaReady,     'source': State.WaitingForArea,       'dest': State.Quorate,
     },
 
+    # If the timer fires in PlayerCheck, then that means gave up waiting for players
+    {
+        'trigger': Trigger.TimerFired,   'source': State.PlayerCheck,          'dest': State.PlayersNotReady,
+    },
+
     # Can only move out of PlayerCheck if there are no idle players
     {
         'trigger': Trigger.PlayerReady,   'source': State.PlayerCheck,          'dest': State.Rolling,
-        'conditions': ['players_ready']
+        'conditions': ['are_players_ready']
     },
 ]
 
@@ -132,10 +139,16 @@ class StateException(Exception):
     pass
 
 
+class RegisterError(Exception):
+    pass
+
+
 class Game:
-    def __init__(self, sport, time=None):
+    def __init__(self, sport, time):
         self.sport = sport
-        self._players = set()
+
+        # Need to use a list for players because sign up order is important.
+        self._players = []
         self._not_ready_players = set()
         self._max_players = sport.max_players
         self._time = time
@@ -166,21 +179,31 @@ class Game:
         return self.sport.area.is_busy(self)
 
     @property
-    def players_ready(self):
+    def are_players_ready(self):
         return len(self._not_ready_players) == 0
 
+    @property
+    def players(self):
+        return self._players
+
+    @property
+    def not_ready_players(self):
+        return self._not_ready_players
 
     # --------------------------------------------------
     # Methods for changing game state
     # --------------------------------------------------
     def add_player(self, player):
         if self.has_space:
-            self._players.add(player)
+            self._players.append(player)
             self.trigger(Trigger.PlayerAdded) # pylint: disable=no-member
 
     def remove_player(self, player):
-        if player in self._players:
-            self._players.discard(player)
+        self.remove_players((player,))
+
+    def remove_players(self, players):
+        for player in (p for p in players if p in self._players):
+            self._players.remove(player)
             self.trigger(Trigger.PlayerRemoved) # pylint: disable=no-member
 
     def add_hold(self, player, reason):
@@ -232,7 +255,7 @@ class Game:
         # If there are no clashed players, then count ourselves as rolling
         # from now, so another game doesn't jump the queue whilst we wait
         # for people to ready up.
-        if self.players_ready():
+        if self.are_players_ready():
             # Count ourselves as rolling from now, so another game
             # don't jump ahead just because we are waiting for our
             # players.
@@ -241,7 +264,7 @@ class Game:
             self.sport.area.add_to_rolling(self)
             self._not_ready_players = {p for p in self._players if p.is_idle}
 
-            if not self.players_ready():
+            if not self.are_players_ready():
                 # @@@ Start timer
                 pass
 
@@ -268,23 +291,99 @@ class GameManager:
                                             send_event=True, queued=True,
                                             finalize_event=self._finalize_event)
 
+        self._game_state_handlers = {
+            State.Empty: self._game_state_empty,
+            State.Rolling: self._game_state_rolling,
+            State.PlayerCheck: self._game_state_player_check,
+            State.PlayersNotReady: self._game_state_player_check,
+        }
+
+        self._games = collections.defaultdict(list)
+
+    # --------------------------------------------------
+    # Public methods
+    # --------------------------------------------------
+    def register(self, time, player):
+        # Make sure the user is not already in a game for this
+        # time.
+        if any(g for g in self._games.get(time, [])
+               if player in g.players):
+            raise RegisterError(
+                f"You are already registered for a game for {time}")
+
+        # Check to see whether there is a game with space at this
+        # time, if not, create a new one.
+        if (time not in self._games or 
+            self._games[time][-1].state != State.NotQuorate):
+            game = self._create_game(time)
+            self._games[time].append(game)
+        else:
+            game = self._games[time][-1]
+
+        game.add_player(player)
+
+    def unregister(self, time, player):
+        if time not in self._games:
+            raise RegisterError(f"There are no games for {time}")
+
+        try:
+            game = next(g for g in self._games[time]
+                        if player in g.players)
+        except StopIteration:
+            raise RegisterError(f"You are not registered for a game for {time}")
+
+        game.remove_player(player)
+        
+        
+    # --------------------------------------------------
+    # Private game state handlers
+    # --------------------------------------------------
     def _finalize_event(self, event):
-        if event.model.state is State.Empty:
-            # @@@ game is empty, delete it!
+        announced = False
+        if event.model.state in self._game_state_handlers:
+            announced = self._game_state_handlers[event.model.state](event)
+
+
+        # Announce the game if a handler hasn't already
+        if not announced:
+            self._announce_game(event.model)
+
+    def _game_state_empty(self, event):
+        self._delete_game(event.model)
+        # @@@ Announce
+        return True
+
+    def _game_state_rolling(self, event):
+        return True
+
+    def _game_state_player_check(self, event):
+        # First check for any players in other games
+        clashed = [p for p in event.model.not_ready_players()
+                     if p.is_currently_rolled]
+        if clashed:
+            # @@@ Announce removals
+            event.model.remove_players(clashed)
+
+        # Only message players when we enter this state
+        elif event.model.transition.source is not State.PlayersNotReady:
+            # @@@ Message not ready players
             pass
 
-        if event.model.state is State.Rolling:
-            # @@@ Let's roll
-            pass
+        # If there were clashed players, then we announce we
+        # are removing people, then entering NotQuorate will do an
+        # announcement.
+        return len(clashed) > 0
 
-        if event.model.state is State.PlayerCheck:
-            # @@@ Remove clashed players, announce idlers
-            pass
-
-    def _create_game(self):
-        game = Game(self._sport)
+    # --------------------------------------------------
+    # Private game utilities
+    # --------------------------------------------------
+    def _create_game(self, time):
+        game = Game(self._sport, time)
         self._machine.add_model(game)
         return game
 
     def _delete_game(self, game):
         self._machine.remove_model(game)
+
+    def _announce_game(self, game):
+        pass

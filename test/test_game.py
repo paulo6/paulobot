@@ -17,6 +17,8 @@ class DummyGame(paulobot.game.Game):
         # Initialize the properties we want to return true by default.
         self.p_has_space = True
 
+
+        # Remove any state action callbacks
         def dummy(*args, **kwargs):
             pass
         for elem in (e for e in self.__dir__() if e.startswith("on_")):
@@ -49,7 +51,7 @@ class DummyGame(paulobot.game.Game):
 
     @property
     @patch_property
-    def players_ready(self):
+    def are_players_ready(self):
         pass
     
 
@@ -185,12 +187,12 @@ class TestFSM:
     def test_state_player_check(self, game):
         # Test: PlayerCheck -> PlayerCheck
         game.state = State.PlayerCheck
-        game.p_players_ready = False
+        game.p_are_players_ready = False
         game.trigger(Trigger.PlayerReady)
         assert game.state == State.PlayerCheck
 
         # Test: PlayerCheck -> Rolling
-        game.p_players_ready = True
+        game.p_are_players_ready = True
         game.trigger(Trigger.PlayerReady)
         assert game.state == State.Rolling
 

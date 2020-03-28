@@ -1,3 +1,5 @@
+import functools
+
 # String for now time
 TIME_NOW = "now"
 
@@ -33,3 +35,41 @@ def format_time(time_val, format_str='%H:%M', allow_now=True):
         return "None"
     else:
         return time_val.strftime(format_str)
+
+@functools.total_ordering
+class Time:
+    """
+    Class that represents either a time value or "now"
+
+    """
+    def __init__(self, val):
+        """
+        Initialize the time.
+
+        Args:
+            val: The time value. Can either be None for now, or
+            a datetime value.
+
+        """
+        self.val = val
+
+    def __str__(self):
+        return format_time(self.val)
+
+    def __hash__(self):
+        return hash(self.val)
+
+    def __eq__(self, other):
+        return self.val == other.val
+
+    def __lt__(self, other):
+        if self.val is None and other.val is not None:
+            return True
+
+        if self.val is not None and other.val is None:
+            return False
+
+        if self == other:
+            return False
+
+        return self.val < other.val

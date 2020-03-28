@@ -10,6 +10,7 @@ import paulobot.command
 
 from paulobot.user import UserManager
 from paulobot.location import LocationManager
+from paulobot.config import Config
 
 __version__ = "1.0.0"
 
@@ -23,11 +24,15 @@ MESSAGE_SEND_ATTEMPTS = 2
 WELCOME_TEXT = "Welcome to PauloBot, please send 'register' if you would like to use this bot"
 REGISTERED_TEXT = "Registration success!"
 
+
 class Room:
     def __init__(self, pb, room_id, title):
-        self.id = room_id,
+        self.id = room_id
         self.title = title
         self._pb = pb
+
+    def __str__(self):
+        return f"{self.id} ({self.title})"
 
     def send_msg(self, text, markdown=None):
         self._pb.send_message(text=text, markdown=markdown,
@@ -51,10 +56,14 @@ class Message(object):
 
 class PauloBot:
     def __init__(self, args):
-        with open(os.path.expanduser("~/.paulobot"), "r") as f:
-            token = f.read()
+        # Initialization order:
+        #  1) Logging, so modules can log
+        #  2) Config
+        #  3) Webex client, so modules can lookup stuff from webex
+        #  4) Managers 
         self._setup_logging(level=args.level)
-        self._webex = paulobot.webex.Client(token,
+        self.config = Config()
+        self._webex = paulobot.webex.Client(self.config.data["token"],
                                             on_message=self._on_message,
                                             on_room_join=self._on_room_join)
 
@@ -95,6 +104,14 @@ class PauloBot:
                     done = False
                     attempt += 1
 
+    def lookup_room(self, room_id):
+        try:
+            room = self._webex.api.rooms.get(room_id)
+            return Room(self, room_id, room.title)
+        except webexteamssdk.exceptions.ApiError:
+            logging.exception(f"Failed to lookup room id: {room_id}")
+            return None
+
     def _setup_logging(self, logfile=None, level=logging.INFO):
         if logfile:
             logfile = os.path.expanduser(logfile)
@@ -119,8 +136,8 @@ class PauloBot:
         text = self._get_message_text(message)
         if message.roomType == "group":
             room = Room(self,
-                        message.room_id,
-                        self._webex.get_room_title(message.room_id))
+                        message.roomId,
+                        self._webex.get_room_title(message.roomId))
         else:
             room = None
 

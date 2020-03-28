@@ -34,10 +34,10 @@ class Client(object):
         self._on_message = on_message
         self._on_room_join = on_room_join
         self._on_room_leave = on_room_leave
-        self._rooms = {}
+        self._room_titles = {}
 
     def get_room_title(self, room_id):
-        return self._rooms.get(room_id, room_id)
+        return self._room_titles.get(room_id, room_id)
         
     def _process_message(self, data):
         if data['data']['eventType'] == 'conversation.activity':
@@ -62,7 +62,7 @@ class Client(object):
                 room = self.api.rooms.get(activity['target']['id'])
                 LOGGER.info("Got ADD for %s in '%s'", 
                             email, room.title)
-                self._rooms[room.id] = room.title
+                self._room_titles[room.id] = room.title
                 if self._on_room_join:
                     self._on_room_join(room,
                                        None if email in self.my_emails else email)
@@ -78,13 +78,13 @@ class Client(object):
                             email,
                             room.title if room else "<not available>")
                 if room is None:
-                    self._populate_rooms()
+                    self._populate_room_titles()
                 if self._on_room_leave:
                     self._on_room_leave(room,
                                         None if email in self.my_emails else email)
 
-    def _populate_rooms(self):
-        self._rooms = {r.id: r.title for r in self.api.rooms.list()}
+    def _populate_room_titles(self):
+        self._room_titles = {r.id: r.title for r in self.api.rooms.list()}
                 
     def _get_device_info(self):
         LOGGER.debug('getting device list')
@@ -109,7 +109,7 @@ class Client(object):
         if self._device_info is None:
             self._device_info = self._get_device_info()
         self.my_emails = self.api.people.me().emails
-        self._populate_rooms()
+        self._populate_room_titles()
             
         async def _run():
             LOGGER.info("Opening websocket connection to %s", self._device_info['webSocketUrl'])
