@@ -17,6 +17,11 @@ class DummyGame(paulobot.game.Game):
         # Initialize the properties we want to return true by default.
         self.p_has_space = True
 
+        def dummy(*args, **kwargs):
+            pass
+        for elem in (e for e in self.__dir__() if e.startswith("on_")):
+            setattr(self, elem, dummy)
+
     @property
     @patch_property
     def has_space(self):
@@ -44,10 +49,7 @@ class DummyGame(paulobot.game.Game):
 
     @property
     @patch_property
-    def has_idle_players(self):
-        pass
-
-    def on_enter_Quorate(self, event):
+    def players_ready(self):
         pass
     
 
@@ -102,13 +104,19 @@ class TestFSM:
         game.trigger(Trigger.PlayerRemoved)
         assert game.state == State.NotQuorate
 
+        # Test: PlayerCheck -> NoNotQuorate
+        game.state = State.PlayerCheck
+        game.p_has_space = True
+        game.trigger(Trigger.PlayerRemoved)
+        assert game.state == State.NotQuorate
+
     def test_event_roll(self, game):
         assert game.state == State.Empty
 
-        # Test: Quorate -> Roll
+        # Test: Quorate -> PlayerCheck
         game.state = State.Quorate
         game.trigger(Trigger.Roll)
-        assert game.state == State.Rolling
+        assert game.state == State.PlayerCheck
 
     def test_state_waiting_for_time(self, game):
         game.state = State.Quorate
@@ -116,16 +124,22 @@ class TestFSM:
         game.trigger(Trigger.Roll)
         assert game.state == State.WaitingForTime
 
-        # Make sure future game takes precendence
+        # Should advance to PlayerCheck when
+        # condition clears
+        game.p_is_future_game = False
+        game.trigger(Trigger.TimerFired)
+        assert game.state == State.PlayerCheck
+
+        # Reset, and make sure future game takes precendence
         game.state = State.Quorate
         game.p_is_future_game = True
         game.p_is_held = True
         game.p_is_area_busy = True
-        game.p_has_idle_players = True
         game.trigger(Trigger.Roll)
         assert game.state == State.WaitingForTime
 
-        # Should return to quorate
+        # Should return to quorate as there are other
+        # issues
         game.p_is_future_game = False
         game.trigger(Trigger.TimerFired)
         assert game.state == State.Quorate
@@ -136,7 +150,13 @@ class TestFSM:
         game.trigger(Trigger.Roll)
         assert game.state == State.WaitingForHold
 
-        # Make sure it takes precedence
+        # Should advance to PlayerCheck when
+        # condition clears
+        game.p_is_held = False
+        game.trigger(Trigger.HoldRemoved)
+        assert game.state == State.PlayerCheck
+
+        # Reset, and make sure it takes precedence
         game.state = State.Quorate
         game.p_is_held = True
         game.p_is_area_busy = True
@@ -144,7 +164,8 @@ class TestFSM:
         game.trigger(Trigger.Roll)
         assert game.state == State.WaitingForHold
 
-        # Should return to quorate
+        # Should return to quorate as there are other
+        # issues
         game.p_is_held = False
         game.trigger(Trigger.HoldRemoved)
         assert game.state == State.Quorate
@@ -155,29 +176,21 @@ class TestFSM:
         game.trigger(Trigger.Roll)
         assert game.state == State.WaitingForArea
 
-        # Make sure it takes precedence
-        game.state = State.Quorate
-        game.p_is_area_busy = True
-        game.p_has_idle_players = True
-        game.trigger(Trigger.Roll)
-        assert game.state == State.WaitingForArea
-
-        # Should return to quorate
+        # Should advance to PlayerCheck when
+        # condition clears
         game.p_is_area_busy = False
         game.trigger(Trigger.AreaReady)
-        assert game.state == State.Quorate
+        assert game.state == State.PlayerCheck
 
-    def test_state_waiting_for_idle(self, game):
-        game.state = State.Quorate
-        game.p_has_idle_players = True
-        game.trigger(Trigger.Roll)
-        assert game.state == State.WaitingForIdle
+    def test_state_player_check(self, game):
+        # Test: PlayerCheck -> PlayerCheck
+        game.state = State.PlayerCheck
+        game.p_players_ready = False
+        game.trigger(Trigger.PlayerReady)
+        assert game.state == State.PlayerCheck
 
-        # Test staying in state
-        game.trigger(Trigger.PlayerUnidled)
-        assert game.state == State.WaitingForIdle
+        # Test: PlayerCheck -> Rolling
+        game.p_players_ready = True
+        game.trigger(Trigger.PlayerReady)
+        assert game.state == State.Rolling
 
-        # Should return to quorate
-        game.p_has_idle_players = False
-        game.trigger(Trigger.PlayerUnidled)
-        assert game.state == State.Quorate
