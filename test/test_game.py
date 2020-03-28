@@ -191,7 +191,13 @@ class TestFSM:
         game.trigger(Trigger.PlayerReady)
         assert game.state == State.PlayerCheck
 
+        # Test: PlayerCheck -> PlayersNotReady
+        game.state = State.PlayerCheck
+        game.trigger(Trigger.TimerFired)
+        assert game.state == State.PlayersNotReady
+
         # Test: PlayerCheck -> Rolling
+        game.state = State.PlayerCheck
         game.p_are_players_ready = True
         game.trigger(Trigger.PlayerReady)
         assert game.state == State.Rolling
