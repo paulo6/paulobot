@@ -33,27 +33,27 @@ PLAYER_CHECK_BLOCKERS = ['is_future_game', 'is_held', 'is_area_busy']
 
 GAME_TRANSITIONS = [
     # Player added transitions
-    { 
+    {
         'trigger': Trigger.PlayerAdded,   'source': State.Empty,      'dest': State.NotQuorate,
         'conditions': ['has_players']
     },
-    { 
+    {
         'trigger': Trigger.PlayerAdded,   'source': State.NotQuorate, 'dest': State.NotQuorate,
         'conditions': ['has_space']
     },
-    { 
+    {
         'trigger': Trigger.PlayerAdded,   'source': State.NotQuorate, 'dest': State.Quorate,
         'unless': ['has_space']
     },
 
     # Player removed transitions
-    { 
+    {
         'trigger': Trigger.PlayerRemoved, 'source': '*',              'dest': State.NotQuorate,
-        'conditions': ['has_players'] 
+        'conditions': ['has_players']
     },
-    { 
+    {
         'trigger': Trigger.PlayerRemoved, 'source': State.NotQuorate, 'dest': State.Empty,
-        'unless': ['has_players'] 
+        'unless': ['has_players']
     },
 
     # Hold transitions - hold can be applied in any state
@@ -151,9 +151,9 @@ class Game:
         self._players = []
         self._not_ready_players = set()
         self._max_players = sport.max_players
-        self._time = time
         self._hold_info = None
         self._in_area_queue = False
+        self._time = time
 
     # --------------------------------------------------
     # Properties
@@ -190,6 +190,10 @@ class Game:
     def not_ready_players(self):
         return self._not_ready_players
 
+    @property
+    def time(self):
+        return self._time
+
     # --------------------------------------------------
     # Methods for changing game state
     # --------------------------------------------------
@@ -214,7 +218,7 @@ class Game:
         if self._hold_info is not None:
             self._hold_info = None
             self.trigger(Trigger.HoldRemoved) # pylint: disable=no-member
-            
+
 
     # --------------------------------------------------
     # State machine callbacks - should *not* be called
@@ -300,6 +304,10 @@ class GameManager:
 
         self._games = collections.defaultdict(list)
 
+    def __repr__(self):
+        return f"<GameManager({self._sport.name})>"
+
+
     # --------------------------------------------------
     # Public methods
     # --------------------------------------------------
@@ -313,7 +321,7 @@ class GameManager:
 
         # Check to see whether there is a game with space at this
         # time, if not, create a new one.
-        if (time not in self._games or 
+        if (time not in self._games or
             self._games[time][-1].state != State.NotQuorate):
             game = self._create_game(time)
             self._games[time].append(game)
@@ -333,8 +341,8 @@ class GameManager:
             raise RegisterError(f"You are not registered for a game for {time}")
 
         game.remove_player(player)
-        
-        
+
+
     # --------------------------------------------------
     # Private game state handlers
     # --------------------------------------------------
@@ -350,10 +358,12 @@ class GameManager:
 
     def _game_state_empty(self, event):
         self._delete_game(event.model)
-        # @@@ Announce
+        self._sport.announce(f"Game for {event.model.time} removed!")
         return True
 
     def _game_state_rolling(self, event):
+        self._delete_game(event.model)
+        self._sport.announce(f"Game for {event.model.time} Rolling!")
         return True
 
     def _game_state_player_check(self, event):
@@ -386,4 +396,4 @@ class GameManager:
         self._machine.remove_model(game)
 
     def _announce_game(self, game):
-        pass
+        self._sport.announce(f"Game for {game.time} state is {game.state}")

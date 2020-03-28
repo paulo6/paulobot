@@ -59,6 +59,15 @@ class Location:
         self.room = room
         self.sports = {}
         self.areas = {}
+        self.users = set()
+
+    def add_user(self, user):
+        for sport in self.sports.values():
+            sport.create_player(user)
+
+        if user not in self.users:
+            self.users.add(user)
+            user.locations.add(self)
 
 
 class LocationManager:
@@ -67,15 +76,21 @@ class LocationManager:
         self.locations = {}
         self._load_config(pb.config.data.get("locations", []))
 
-    def get_user_locations(self, user):
-        return []
-
     def get_room_location(self, room):
         locs = [l for l in self.locations.values()
                   if l.room.id == room.id]
         if locs:
             return locs[0]
         return None
+
+    def add_user_to_locations(self, user):
+        # Check to see whether this user is already in rooms associated with
+        # locations
+        for loc in (l for l in self.locations.values() if l.room):
+            users = self._pb.get_room_users(loc.room)
+            if user in users:
+                loc.add_user(user)
+
 
     def _get_null_area(self, loc):
         if None not in loc.areas:
@@ -106,9 +121,9 @@ class LocationManager:
                 sport = paulobot.sport.Sport(
                     loc,
                     c_sport["name"],
-                    "",
+                    c_sport.get("description", ""),
                     area,
-                    c_sport["players"])
+                    c_sport["team-size"])
+                loc.sports[sport.name] = sport
 
 
-    

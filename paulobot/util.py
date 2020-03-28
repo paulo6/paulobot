@@ -15,7 +15,7 @@ def ordinal(n):
 
 def safe_string(msg):
     """
-    Make the string safe, by trying to convert each character in turn to 
+    Make the string safe, by trying to convert each character in turn to
     string, replacing bad ones with ?
 
     """
@@ -24,7 +24,7 @@ def safe_string(msg):
             return str(c)
         except:
             return "?"
-        
+
     return "".join(map_char(c) for c in msg)
 
 def format_time(time_val, format_str='%H:%M', allow_now=True):
@@ -55,6 +55,9 @@ class Time:
 
     def __str__(self):
         return format_time(self.val)
+
+    def __repr__(self):
+        return f"<Time({self})>"
 
     def __hash__(self):
         return hash(self.val)

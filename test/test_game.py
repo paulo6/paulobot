@@ -53,7 +53,7 @@ class DummyGame(paulobot.game.Game):
     @patch_property
     def are_players_ready(self):
         pass
-    
+
 
 class TestFSM:
     @pytest.fixture

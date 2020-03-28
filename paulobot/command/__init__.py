@@ -4,9 +4,10 @@ import collections
 
 from .. import util
 from . import global_cmds
+from . import sport_cmds
 from . import defs
 
-from .defs import (ParseError, CommandError, Flags, MAIN_HELP_PREAMBLE)
+from .defs import (ParseError, CommandError, Flags, MAIN_HELP_PREAMBLE, MAIN_HELP_LOCATION)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -14,11 +15,13 @@ class HandlerError(Exception):
     pass
 
 class _MsgContext:
-    __slots__ = ["cmd_name", "sub_cmds", "handler_class", "location", "sport", "area"]
+    __slots__ = ["cmd_name", "sub_cmds", "handler_class",
+                 "handler_title", "location", "sport", "area"]
     def __init__(self):
         self.cmd_name = None
         self.sub_cmds = []
         self.handler_class = None
+        self.handler_title = None
         self.location = None
         self.sport = None
         self.area = None
@@ -34,7 +37,7 @@ class Handler(object):
 
         # Global command handler
         self._global_handler = global_cmds.ClassHandler(self._pb)
-        self._sport_handler = None
+        self._sport_handler = sport_cmds.ClassHandler(self._pb)
         self._area_handler = None
 
     def _get_message_context(self, msg):
@@ -51,6 +54,7 @@ class Handler(object):
         # If we have a simple help command, then stop
         if cmds[0] in ("?", "help") and len(cmds) == 1:
             ctx.handler_class = self._global_handler
+            ctx.handler_title = "Global"
             ctx.cmd_name = cmds[0]
             return ctx
 
@@ -68,6 +72,7 @@ class Handler(object):
         # to see what's available in the user's locations
         if target in self._global_handler.cmd_defs:
             ctx.handler_class = self._global_handler
+            ctx.handler_title = "Global"
         else:
             # If this message is from a room, then this room is only
             # associated with a single location, so use that.
@@ -82,19 +87,21 @@ class Handler(object):
                     raise HandlerError("Room not associated with a location.")
                 locs = (loc,)
             else:
-                locs = self._pb.loc_manager.get_user_locations(msg.user)
+                locs = msg.user.locations
 
             for loc in locs:
                 if target in loc.sports:
                     ctx.handler_class = self._sport_handler
                     ctx.location = loc
                     ctx.sport = loc.sports[target]
+                    ctx.handler_title = ctx.sport.name.upper()
                     break
 
                 if target in loc.areas:
                     ctx.location = loc
                     ctx.handler_class = self._area_handler
                     ctx.area = loc.areas[target]
+                    ctx.handler_title = ctx.area.name.title()
                     break
 
             if ctx.location is None:
@@ -120,7 +127,7 @@ class Handler(object):
             if e.args:
                 msg.reply_to_user(e.args[0])
             return
-        
+
         # Get the command definition (create a dummy one for help and ?)
         if ctx.cmd_name in ("help", "?"):
             cmd_def = defs.CmdDef(None, Flags.Direct | Flags.Group,
@@ -133,17 +140,17 @@ class Handler(object):
                 ctx.cmd_name = cmd_def.alias
                 cmd_def = ctx.handler_class.cmd_defs.get(ctx.cmd_name)
 
-        if cmd_def is None or (cmd_def.has_flag(Flags.Admin) 
+        if cmd_def is None or (cmd_def.has_flag(Flags.Admin)
                                and not msg.user.is_admin):
             # Use safe_string to handle any strange characters that have
             # been sent
             msg.reply_to_user("Unknown {} command {}. Try help"
-                              .format("group-chat" if msg.is_group 
-                                      else "direct-chat", 
+                              .format("group-chat" if msg.is_group
+                                      else "direct-chat",
                                       util.safe_string(ctx.cmd_name)))
             if cmd_def is not None and cmd_def.has_flag(Flags.Admin):
                 LOGGER.info("{} just attempted to use admin command: {}"
-                            .format(str(msg.user), 
+                            .format(str(msg.user),
                                     util.safe_string(msg.body)))
         elif msg.is_group and not cmd_def.has_flag(Flags.Group):
             msg.reply_to_user("{} does not have a group-chat version"
@@ -181,18 +188,17 @@ class Handler(object):
                     self._handle_question(c_msg, ctx.handler_class)
                 else:
                     if cmd_def.has_flag(Flags.Admin):
-                        LOGGER.warning("User {} executing admin command '{}'"
-                                       .format(str(msg.user), 
-                                               util.safe_string(msg.body)))
+                        LOGGER.warning("User %s executing admin command '%s'",
+                                       msg.user,
+                                       util.safe_string(msg.body))
                     ctx.handler_class.handle_command(ctx.cmd_name, c_msg)
 
             except CommandError as e:
-                # If the error message is not None, then send error reply. 
+                # If the error message is not None, then send error reply.
                 # If it is None, then it is a legacy command that sends its
                 # own error
                 if e.error_msg is not None:
-                    text = "Sorry {}. {}".format(str(c_msg.user),
-                                                 e.error_msg)
+                    text = f"Sorry {c_msg.user.name}. {e.error_msg}"
                     if e.reply_fn is None:
                         c_msg.reply(text)
                     else:
@@ -202,11 +208,11 @@ class Handler(object):
             #    c_msg.reply("This sport does not have scoring support.")
 
             except Exception as e:
-                # Flows for the bot are either triggered by command or 
-                # triggered by a timer. So we wrap both these points with an 
-                # exception LOGGER to ensure we record any exceptions that 
+                # Flows for the bot are either triggered by command or
+                # triggered by a timer. So we wrap both these points with an
+                # exception LOGGER to ensure we record any exceptions that
                 # occur.
-                reason = "{} from {!s}: {}".format("group-chat" if msg.is_group 
+                reason = "{} from {!s}: {}".format("group-chat" if msg.is_group
                                                  else "direct-chat",
                                                  msg.user, msg.text)
                 LOGGER.exception("Hit exception processing " + reason)
@@ -271,15 +277,33 @@ class Handler(object):
         if len(ctx.sub_cmds) > 0 and ctx.handler_class == self._global_handler:
             self._handle_help_cmd(user, "global",
                                   ctx.handler_class, ctx.sub_cmds[0])
-        elif len(ctx.sub_cmds) == 1:
+        elif len(ctx.sub_cmds) == 1 or (
+                    len(ctx.sub_cmds) == 0 and
+                    ctx.handler_class != self._global_handler):
             self._handle_help_class(user, ctx)
         elif len(ctx.sub_cmds) > 1:
             self._handle_help_cmd(user, ctx.sub_cmds[0],
                                   ctx.handler_class, ctx.sub_cmds[1])
         else:
-            global_help = self._get_help_for_class(user, ctx)
-            help = MAIN_HELP_PREAMBLE.format("", "", global_help)
-            self.send_html_msg(user, help)
+            self._handle_help_global(user, ctx)
+
+    def _handle_help_global(self, user, ctx):
+        global_help = self._get_help_for_class(user, ctx)
+        if not user.locations:
+            locations = "@@@ NO LOCATIONS"
+        else:
+            sports = []
+            areas = []
+            for loc in user.locations:
+                sports.extend(loc.sports.values())
+                areas.extend(loc.areas.values())
+
+            locations = MAIN_HELP_LOCATION.format(
+                "  - " + "\n  - ".join(f"{s.name} - {s.desc} (team-size {s.team_size})" for s in sports),
+                "  - " + "\n  - ".join(f"{a.name} - {a.desc}" for a in areas))
+
+        help = MAIN_HELP_PREAMBLE.format(locations, global_help)
+        user.send_msg(text=None, markdown=help)
 
     def _get_help_for_class(self, user, ctx):
         help = ""
@@ -294,15 +318,15 @@ class Handler(object):
 
                 if cmd_def.has_flag(Flags.Admin) and not user.is_admin:
                     continue
-            
-                if (cmd_def.desc is None 
+
+                if (cmd_def.desc is None
                     or not cmd_def.has_flag(flag)
                     or ((not ctx.sport or not ctx.sport.has_scores)
                         and cmd_def.has_flag(Flags.Score))):
                     continue
-                
+
                 if is_group and cmd_def.muc_desc is not None:
-                    desc = cmd_def.muc_desc 
+                    desc = cmd_def.muc_desc
                 else:
                     desc = cmd_def.desc
 
@@ -313,24 +337,24 @@ class Handler(object):
         if extra_info is not None:
             help += "\n" + extra_info
 
-        help += "\n\nDirect-chat commands:"
-        help += "\n-------------------"
+        help += f"\n\n###{ctx.handler_title} direct-chat commands:"
+        help += "\n```\n"
         help += add_cmds(Flags.Direct, False)
+        help += "\n```\n"
 
-        help += "\n\nGroup-chat commands:"
-        help += "\n-------------------"
+        help += f"\n###{ctx.handler_title} group-chat commands:"
+        help += "\n```\n"
         help += add_cmds(Flags.Group, True)
-        help += ("\n\nType 'help {}<cmd>' for more details about a command"
+        help += "\n```\n"
+        help += ("\nType `help {}<cmd>` for more details about a command"
                  .format("" if not ctx.sub_cmds else f"{ctx.sub_cmds[0]} "))
         return help
 
     def _handle_help_class(self, user, ctx):
-        help = "Help for {} commands".format(ctx.sub_cmds[0])
-        help += self._get_help_for_class(user, ctx)
+        help = self._get_help_for_class(user, ctx)
+        user.send_msg(text=None, markdown=help)
 
-        self.send_html_msg(user, help)
-
-    def _handle_help_cmd(self, user, group_name, handler_class, cmd):        
+    def _handle_help_cmd(self, user, group_name, handler_class, cmd):
         help = "Help for '{}{}'".format(
             "" if handler_class == self._global_handler else f"{group_name} ",
             cmd)
@@ -339,7 +363,7 @@ class Handler(object):
         cmd_def = handler_class.cmd_defs.get(cmd)
         if cmd_def is None:
             raise CommandError("No such command '{}'"
-                               .format(util.safe_string(cmd)), 
+                               .format(util.safe_string(cmd)),
                                user.send_msg)
 
         # If alias, then grab alias
@@ -372,13 +396,13 @@ class Handler(object):
         #  - args None and muc_args not None: SUC no args, MUC args
         #  - args not None and len(muc_args) == 0: SUC args, MUC no args
 
-        if (cmd_def.args_def is None or 
+        if (cmd_def.args_def is None or
             len(cmd_def.args_def) == 0) and cmd_def.muc_args_def is None:
             help += "\n\n  Command takes no arguments"
         else:
             if cmd_def.args_def is not None and len(cmd_def.args_def) > 0:
                 prefix = "" if cmd_def.muc_args_def is None else "Direct-chat "
-                help += "\n\n  {}Arguments: {}\n".format(prefix, 
+                help += "\n\n  {}Arguments: {}\n".format(prefix,
                                                        cmd_def.args_str)
                 for arg in cmd_def.args_def:
                     if arg.desc is not None:
@@ -419,12 +443,12 @@ class Handler(object):
 
         # Filter out non-score ones
         if not c_msg.sport or not c_msg.sport.has_scores:
-            cmds = ((cmd, cmd_def) 
+            cmds = ((cmd, cmd_def)
                         for cmd, cmd_def in cmds
                         if not cmd_def.has_flag(Flags.Score))
 
         # Filter out hidden ones
-        cmds = ((cmd, cmd_def) 
+        cmds = ((cmd, cmd_def)
                  for cmd, cmd_def in cmds
                    if cmd_def.desc is not None)
 
@@ -441,7 +465,7 @@ class Handler(object):
         lines = []
         for idx in range(0, len(cmd_names), col_count):
             lines.append("".join("{1:{0}}".format(col_width, c)
-                                 for c in cmd_names[idx:idx + col_count]))            
+                                 for c in cmd_names[idx:idx + col_count]))
 
         # Send results, to room if this was from a room
         self.send_html_msg(c_msg.user, "Options:\n" + "\n".join(lines),

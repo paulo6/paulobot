@@ -6,7 +6,9 @@ import logging
 import re
 import enum
 import collections
+import functools
 
+import paulobot.game
 from .. import util
 
 # String for 'next' game
@@ -53,22 +55,30 @@ class Flags(enum.IntFlag):
     Help   = 0x10
 
 
-MAIN_HELP_PREAMBLE = """Welcome to PauloBot!
+MAIN_HELP_PREAMBLE = """
+##Welcome to PauloBot!
 
 PauloBot's purpose in life is to help you organise games in the office, and track results.
 
-
-The various sports that PauloBot supports are listed below:
 {}
-Type 'help <sport>' for details about sports commands
 
-
-The following playing areas are available for your location:
 {}
-Type 'help <area>' for details about area commands.
+"""
 
+MAIN_HELP_LOCATION = """
+---
+###The various sports that PauloBot supports for your locations are:
+{}
 
-The following global commands are also available: {}
+Type `help <sport>` for details about sports commands.
+
+---
+###The following playing areas are available for your location:
+{}
+
+Type `help <area>` for details about area commands.
+
+---
 """
 
 
@@ -96,6 +106,22 @@ class CommandError(Exception):
 
 class ParseError(Exception):
     pass
+
+
+def catch_user_errors(fn):
+    """
+    Decorator for catching errors caused by the user doing
+    something wrong, and converting to CommandErrors.
+
+    """
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            fn(*args, **kwargs)
+        except paulobot.game.RegisterError as e:
+            raise CommandError(str(e))
+
+    return wrapper
 
 
 # Command definition class
@@ -191,9 +217,9 @@ class ArgDef(object):
             word        -- a single word
             string      -- consumes the rest of the arguments
             num         -- a number
-            subcmd      -- a subcommand argument (behaves like word 
+            subcmd      -- a subcommand argument (behaves like word
                             @@@ remove?)
-            time        -- time argument 
+            time        -- time argument
             user        -- user/player argument
             team        -- list of players
             score       -- score argument
@@ -205,7 +231,7 @@ class ArgDef(object):
 
         # The flags
         self.flags = self.FLAG_DEFAULT
-        
+
         # The argument description
         self.desc = None
 
@@ -221,7 +247,7 @@ class ArgDef(object):
         # Time minute granularity
         self.time_granularity = 5
 
-        # Maximum repeat count for repeated/multiple args. Set to a large 
+        # Maximum repeat count for repeated/multiple args. Set to a large
         # number by default
         self.max_count = 100
 
@@ -239,7 +265,7 @@ class ArgDef(object):
 
         if self.has_flag(self.FLAG_REPEATED):
             arg_str += "+"
-        if (self.has_flag(self.FLAG_OPTIONAL) or 
+        if (self.has_flag(self.FLAG_OPTIONAL) or
             self.has_flag(self.FLAG_CONDITIONALLY_OPTIONAL)):
             arg_str = "[{}]".format(arg_str)
         return arg_str
@@ -271,7 +297,7 @@ class ArgDef(object):
         if "<" not in arg and ">" not in arg:
             self.arg_type = self.ARG_KEYWORD
             self.keywords = type_info.split("|")
-            name = self.keywords[0] 
+            name = self.keywords[0]
         elif type_info.startswith("choice"):
             self.arg_type = self.ARG_CHOICE
             default_name = "choice"
@@ -328,7 +354,7 @@ class ArgDef(object):
         elif arg[0] == "{":
             self.flags |= self.FLAG_CONDITIONALLY_OPTIONAL
             if self.desc is not None:
-                self.desc = ("(Optional if no other args specified) " + 
+                self.desc = ("(Optional if no other args specified) " +
                              self.desc)
 
 
@@ -358,7 +384,7 @@ class ArgParser(collections.abc.MutableMapping):
 
         # Ignore values after #, as these are a comment! Note that the hash
         # must be at the start of a value.
-        comment_idx = [idx for idx, v in enumerate(values) 
+        comment_idx = [idx for idx, v in enumerate(values)
                        if v.startswith("#")]
         if len(comment_idx) > 0:
             values = values[:comment_idx[0]]
@@ -371,9 +397,9 @@ class ArgParser(collections.abc.MutableMapping):
             # Update current index
             self._curr_idx = idx
 
-            # If there are no values left, then make sure there are no 
+            # If there are no values left, then make sure there are no
             # mandatory arguments that still need to be specified.
-            # 
+            #
             # Conditionally optional args are not mandatory if no values have
             # been passed at all
             mand_defs = [
@@ -389,7 +415,7 @@ class ArgParser(collections.abc.MutableMapping):
                 break
 
             result, num = self._process_arg_def(arg_def, values)
-            
+
             # If there was something for this def, then add it and move to
             # next value
             if num > 0:
@@ -408,21 +434,21 @@ class ArgParser(collections.abc.MutableMapping):
 
     #
     # MutableMapping methods
-    # 
+    #
     def __getitem__(self,key):
         return self._args[key]
 
-    def __setitem__(self,key, val): 
+    def __setitem__(self,key, val):
         raise RuntimeError('read only object')
 
-    def __delitem__(self,key): 
+    def __delitem__(self,key):
         raise RuntimeError('read only object')
 
     def __iter__(self):
         return iter(self._args)
 
     def __len__(self):
-        return len(self._args)    
+        return len(self._args)
 
     def keys(self):
         return self._args.keys()
@@ -472,11 +498,11 @@ class ArgParser(collections.abc.MutableMapping):
             return self._parse_type(arg_def, values)
         except BadArgValue as e:
             # This is ok if it is optional, unless this is the last
-            # arg def. 
-            # 
+            # arg def.
+            #
             # If mandatory and repeated arg, then it is ok if we have at least
             # one value
-            if (arg_def.has_flag(arg_def.FLAG_OPTIONAL) and 
+            if (arg_def.has_flag(arg_def.FLAG_OPTIONAL) and
                 not self._is_last_arg_def):
                 return None, 0
             elif (not arg_def.has_flag(arg_def.FLAG_OPTIONAL) and
@@ -484,7 +510,7 @@ class ArgParser(collections.abc.MutableMapping):
                 return None, 0
             elif arg_def.arg_type == arg_def.ARG_KEYWORD:
                 raise BadArgValue("Invalid keyword '{}': {}"
-                                  .format(util.safe_string(values[0]), 
+                                  .format(util.safe_string(values[0]),
                                            str(e)))
             else:
                 value = e.bad_value if e.bad_value is not None else values[0]
@@ -519,7 +545,7 @@ class ArgParser(collections.abc.MutableMapping):
     #
     def _parse_type(self, arg_def, values):
         """
-        Process a value string, returning the value. 
+        Process a value string, returning the value.
 
         Raises BadArgValue if value is bad.
 
@@ -591,7 +617,7 @@ class ArgParser(collections.abc.MutableMapping):
             if len(arg_def.keywords) > 1:
                 raise BadArgValue("Expecting '{}' (allowed "
                                   "variants: '{}')"
-                                  .format(arg_def.name, 
+                                  .format(arg_def.name,
                                           "', '".join(arg_def.keywords[1:])))
             else:
                 raise BadArgValue("Expecting {}"
@@ -638,7 +664,7 @@ class ArgParser(collections.abc.MutableMapping):
         return match.group(1), 1
 
     def _parse_type_team(self, arg_def, values):
-        # What is the must number of values we can use? 
+        # What is the must number of values we can use?
         # This assumes that whatever arg_def comes next won't consume args
         # that look like players
         max_count = 0
@@ -669,7 +695,7 @@ class ArgParser(collections.abc.MutableMapping):
 
 class CMessage(object):
     """
-    Class that wraps a received message for use in command modules, 
+    Class that wraps a received message for use in command modules,
     containing useful information to be used by the handlers.
 
     """
@@ -682,7 +708,7 @@ class CMessage(object):
         self.sport = sport
         self.area = area
 
-        # Dictionary of argument name to argument value, parsed from the 
+        # Dictionary of argument name to argument value, parsed from the
         # command string using the argument definitions for this command.
         #
         # Populated when parse_args called
@@ -698,13 +724,13 @@ class CMessage(object):
             self.args = ArgParser(self._cmd_def, arg_list,
                                   is_muc=self.room is not None,
                                   team_size=team_size)
-        
+
         # Convert to CommandError
         except BadArgValue as e:
             raise CommandError(e)
 
     def is_arg_optional(self, arg_name):
-        if (self.room is not None and 
+        if (self.room is not None and
             self._cmd_def.muc_args_def is not None):
             search_defs = self._cmd_def.muc_args_def
         else:
@@ -771,7 +797,7 @@ class ClassHandlerInterface(object):
                     -s.last_game_id)
 
         # Only include known players
-        pairs = ((p, s) 
+        pairs = ((p, s)
                  for p, s in sport.stats.player_stats.items()
                  if p.is_known)
 
@@ -788,16 +814,16 @@ class ClassHandlerInterface(object):
         icons = []
         team_stats = sport.stats.team_stats
         if (m_player is not None
-            and team_stats.dream_team is not None 
+            and team_stats.dream_team is not None
             and m_player in team_stats.dream_team):
             icons.append(Icons.Dream)
         if (m_player is not None
-            and team_stats.creamed_team is not None 
+            and team_stats.creamed_team is not None
             and m_player in team_stats.creamed_team):
             icons.append(Icons.Cream)
 
         leader_board = sport.stats.get_leader_board(include_stats=False)
-        if (m_player in leader_board 
+        if (m_player in leader_board
             and leader_board.index(m_player) == 0):
             icons.append(Icons.Champ)
         if m_player == self.get_most_active_player(sport, include_stats=False):

@@ -1,14 +1,14 @@
 #
-# Global Commands definition (e.g. "sports xxx")
+# Global Commands definition (e.g. "xxx")
 #
 import datetime
 
 from .. import util
 
-from . import defs 
+from . import defs
 from .defs import (CommandError, Flags, CmdDef)
 
-# Global command list (e.g. "sports xxx")
+# Global command list (e.g. "xxx")
 _CMDS_GLOBAL = {
     'time'          : CmdDef('Show times',
                              Flags.Direct | Flags.Group),
@@ -34,4 +34,3 @@ class ClassHandler(defs.ClassHandlerInterface):
                         last_boot)
         c_msg.reply(msg)
 
-    

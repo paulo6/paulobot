@@ -22,7 +22,7 @@ TAG_REGEX = r'>([A-Za-z0-9\-_ @]+)</spark-mention>'
 MESSAGE_SEND_ATTEMPTS = 2
 
 WELCOME_TEXT = "Welcome to PauloBot, please send 'register' if you would like to use this bot"
-REGISTERED_TEXT = "Registration success!"
+REGISTERED_TEXT = "Registration success! Welcome {}!"
 
 
 class Room:
@@ -54,13 +54,31 @@ class Message(object):
         if self.user is not None:
             self.user.send_msg(text)
 
+
+class SendMsgHandler(logging.Handler):
+    def __init__(self, pb):
+        self._pb = pb
+
+        super(SendMsgHandler, self).__init__()
+
+    def emit(self, record):
+        log_entry = self.format(record)
+        for email in self._pb.notify_list:
+            try:
+                self._pb._webex.api.messages.create(
+                    toPersonEmail=email,
+                    markdown=f"LOG ALERT:\n```\n{log_entry}\n```")
+            except webexteamssdk.exceptions.ApiError:
+                pass
+
+
 class PauloBot:
     def __init__(self, args):
         # Initialization order:
         #  1) Logging, so modules can log
         #  2) Config
         #  3) Webex client, so modules can lookup stuff from webex
-        #  4) Managers 
+        #  4) Managers
         self._setup_logging(level=args.level)
         self.config = Config()
         self._webex = paulobot.webex.Client(self.config.data["token"],
@@ -72,6 +90,8 @@ class PauloBot:
 
         self.command_handler = paulobot.command.Handler(self)
         self.boot_time = datetime.datetime.now()
+        self.admins = set(self.config.data.get("admins", []))
+        self.notify_list = self.config.data.get("admins", [])
 
     def run(self):
         self._webex.run()
@@ -112,6 +132,12 @@ class PauloBot:
             logging.exception(f"Failed to lookup room id: {room_id}")
             return None
 
+    def get_room_users(self, room):
+        members = self._webex.api.memberships.list(roomId=room.id)
+        users = (self.user_manager.lookup_user(m.personEmail) for m in members)
+
+        return [u for u in users if u is not None]
+
     def _setup_logging(self, logfile=None, level=logging.INFO):
         if logfile:
             logfile = os.path.expanduser(logfile)
@@ -130,7 +156,10 @@ class PauloBot:
                                 style="{")
             logging.info("Logging to STDOUT")
 
-        # @@@ Setup a handler for sending error logs to admin(s)
+        # Setup a handler for sending error logs to notification list
+        notify_list = SendMsgHandler(self)
+        notify_list.setLevel(logging.ERROR)
+        logging.getLogger().addHandler(notify_list)
 
     def _on_message(self, message):
         text = self._get_message_text(message)
@@ -144,16 +173,24 @@ class PauloBot:
         # Lookup user
         user = self.user_manager.lookup_user(message.personEmail)
         if user is None and text == "register":
-            self._register_user(message.personEmail)
+            self._register_user(message.personId,
+                                message.personEmail)
         elif user is None:
             self.send_message(WELCOME_TEXT, user_email=message.personEmail)
         else:
             p_msg = Message(user, text, room)
             self.command_handler.handle_message(p_msg)
 
-    def _register_user(self, email):
-        self.user_manager.create_user(email, email)
-        self.send_message(REGISTERED_TEXT, user_email=email)    
+    def _register_user(self, person_id, email):
+        person = self._webex.api.people.get(person_id)
+        user = self.user_manager.create_user(email,
+                        person.displayName,
+                        person.firstName)
+        user.send_msg(REGISTERED_TEXT.format(user.name))
+        if user.locations:
+            user.send_msg(
+                "You have been added to the follow locations: "
+                f"{',' .join(l.name for l in user.locations)}")
 
     def _on_room_join(self, room, email):
         if email is None:

@@ -85,12 +85,12 @@ class Model(object):
             LOGGER.info("Skill module disabled")
         elif allow_draws:
             self._env = trueskill.TrueSkill(
-                draw_probability=DEFAULT_DRAW_CHANCE, 
+                draw_probability=DEFAULT_DRAW_CHANCE,
                 backend='mpmath')
             LOGGER.info("Created 'draws' model with %s backend, dps %s",
                         self._env.backend, mpmath.mp.dps)
         else:
-            self._env = trueskill.TrueSkill(draw_probability=0.0, 
+            self._env = trueskill.TrueSkill(draw_probability=0.0,
                                             backend='mpmath')
             LOGGER.info("Created 'normal' model with %s backend, dps %s",
                         self._env.backend, mpmath.mp.dps)
@@ -128,10 +128,10 @@ class Model(object):
     def _quality_fast(self, player_groups):
         """
         The Trueskill module's quality method can be slow, as it uses matrices to
-        handle the >2 team possiblity. We only ever have 2 teams, so can 
+        handle the >2 team possiblity. We only ever have 2 teams, so can
         simplify.
 
-        This formula is taken from 
+        This formula is taken from
         http://research.microsoft.com/pubs/74419/TR-2006-80.pdf equation 4.1
 
         """
@@ -174,8 +174,8 @@ class Model(object):
             else:
                 winner = team1, score1
                 loser = team2, score2
-            
-            # Record losing player's wins first, remembering that 2nd argument is 
+
+            # Record losing player's wins first, remembering that 2nd argument is
             # game placement not score
             for _ in range(loser[1]):
                 self._rate([winner[0], loser[0]], [2, 1])
@@ -188,9 +188,9 @@ class Model(object):
 
         best_quality = 0
 
-        # If there are 'exactly' equal best matches, one of them will be picked 
+        # If there are 'exactly' equal best matches, one of them will be picked
         # arbitrarily...
-        best_match = None 
+        best_match = None
         for team1, team2 in team_permutations(*players):
             q = self.quality([team1, team2])
             if q > best_quality:
@@ -204,15 +204,15 @@ class Model(object):
 
     def win_probability(self, team1, team2):
         """
-        Calculate win probablility using 
-           https://github.com/sublee/trueskill/issues/1#issuecomment-149762508 
+        Calculate win probablility using
+           https://github.com/sublee/trueskill/issues/1#issuecomment-149762508
            http://stackoverflow.com/a/28035456
 
         """
-        delta_mu = (sum([x.rating.mu for x in team1]) 
+        delta_mu = (sum([x.rating.mu for x in team1])
                     - sum([x.rating.mu for x in team2]))
-        denom = math.sqrt(2 * len(team1) * (self._env.beta ** 2) 
-                          + sum([x.rating.sigma**2 for x in team1]) 
+        denom = math.sqrt(2 * len(team1) * (self._env.beta ** 2)
+                          + sum([x.rating.sigma**2 for x in team1])
                           + sum([x.rating.sigma**2 for x in team2]))
         return self._env.cdf(delta_mu / denom)
 
