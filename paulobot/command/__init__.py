@@ -9,7 +9,7 @@ from . import defs
 
 from .defs import (ParseError, CommandError, Flags)
 
-from paulobot.templates.commands import MAIN_HELP_PREAMBLE, MAIN_HELP_LOCATION
+from paulobot.templates.commands import MAIN_HELP_PREAMBLE, MAIN_HELP_LOCATION, MAIN_HELP_NO_LOCATION
 
 LOGGER = logging.getLogger(__name__)
 
@@ -157,8 +157,8 @@ class Handler(object):
             msg.reply_to_user("Unknown {} command {}. Try `help {}`"
                               .format("group-chat" if msg.is_group
                                       else "direct-chat",
-                                      common.safe_string(ctx.cmd_name)),
-                                      ctx.handler_name)
+                                      common.safe_string(ctx.cmd_name),
+                                      ctx.handler_name))
             if cmd_def is not None and cmd_def.has_flag(Flags.Admin):
                 LOGGER.info("{} just attempted to use admin command: {}"
                             .format(str(msg.user),
