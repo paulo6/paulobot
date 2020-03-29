@@ -303,7 +303,7 @@ class Handler(object):
     def _handle_help_global(self, user, ctx):
         global_help = self._get_help_for_class(user, ctx)
         if not user.locations:
-            locations = "@@@ NO LOCATIONS"
+            locations = MAIN_HELP_NO_LOCATION
         else:
             sports = []
             areas = []

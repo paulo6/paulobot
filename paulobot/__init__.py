@@ -253,12 +253,20 @@ class PauloBot:
         user.send_msg(REGISTERED_TEXT.format(user.name))
 
     def _on_room_join(self, room, email):
+        room = Room(self,
+                    room.id,
+                    self._webex.get_room_title(room.id))
+
         if email is None:
             self.send_message(room_id=room.id,
                               text="Hello everyone!")
         else:
-            self.send_message(room_id=room.id,
-                              text=f"Welcome {email}")
+            user = self.user_manager.lookup_user(email)
+            if user is not None:
+                loc = self.loc_manager.get_room_location(room)
+                if loc is not None and user not in loc.users:
+                    loc.add_user(user)
+                    user.send_msg(f"Added to location {loc.name} (room {room.title})")
 
     def _get_message_text(self, message):
         if message.roomType != "group":
@@ -277,7 +285,6 @@ class PauloBot:
                 text = text[:-len(tag)].rstrip()
 
         return text
-
 
 
 def main(args):

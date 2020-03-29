@@ -36,3 +36,5 @@ Type `help <area>` for details about area commands.
 
 ---
 """
+
+MAIN_HELP_NO_LOCATION = """You are not in any sport locations."""
