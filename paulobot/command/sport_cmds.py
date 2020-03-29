@@ -25,6 +25,15 @@ _CMDS_GLOBAL = {
                            args=[_TIME_ARG + " Unregister for game at this time [default 'now']"]),
     'status'      : CmdDef('Show status of games for this sport',
                            Flags.Direct | Flags.Group),
+    'ready'       : CmdDef('Indicate an open game is ready to roll (no team '
+                           'limit game)',
+                           Flags.Direct | Flags.Group | Flags.Open,
+                           args=[_TIME_ARG + " Ready game at this "
+                                 "specific time [default 'now']"]),
+    'unready'     : CmdDef('Undo a "ready" (no team limit game)',
+                           Flags.Direct | Flags.Group | Flags.Open,
+                           args=[_TIME_ARG + " Unready game at this specific "
+                                 "time [default 'now']"]),
 }
 
 
@@ -81,17 +90,35 @@ class ClassHandler(defs.ClassHandlerInterface):
     @catch_user_errors
     def _cmd_unreg(self, c_msg):
         gtime = self.get_gtime(c_msg)
+        c_msg.sport.game_unregister(c_msg.user, gtime)
+        if not c_msg.room and c_msg.location.room:
+            c_msg.reply(f"Unregistered for game for {gtime} in '{c_msg.location.room.title}'")
+        elif not c_msg.room:
+            c_msg.reply(f"Unregistered for game for {gtime}")
+
+    @catch_user_errors
+    def _cmd_ready(self, c_msg):
+        gtime = self.get_gtime(c_msg)
 
         # Make sure this player isn't marked as idle, just in case the
         # player is idle now and is the 4th player regging (and so it
         # would announce they are idle and then immediately say they are
         # no longer idle)
         c_msg.user.update_last_msg(update_idle_games=False)
-        c_msg.sport.game_unregister(c_msg.user, gtime)
+        c_msg.sport.game_set_ready_mark(c_msg.user, gtime, True)
         if not c_msg.room and c_msg.location.room:
-            c_msg.reply(f"Unregistered for game for {gtime} in '{c_msg.location.room.title}'")
+            c_msg.reply(f"Game for {gtime} marked as ready '{c_msg.location.room.title}'")
         elif not c_msg.room:
-            c_msg.reply(f"Unregistered for game for {gtime}")
+            c_msg.reply(f"Game for {gtime} marked as ready")
+
+    @catch_user_errors
+    def _cmd_unready(self, c_msg):
+        gtime = self.get_gtime(c_msg)
+        c_msg.sport.game_set_ready_mark(c_msg.user, gtime, False)
+        if not c_msg.room and c_msg.location.room:
+            c_msg.reply(f"Game for {gtime} marked as unready '{c_msg.location.room.title}'")
+        elif not c_msg.room:
+            c_msg.reply(f"Game for {gtime} marked as unready")
 
     @catch_user_errors
     def _cmd_status(self, c_msg):

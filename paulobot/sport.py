@@ -41,6 +41,11 @@ class Sport:
         self._game_manager.unregister(gtime,
                                       self.players[user])
 
+    def game_set_ready_mark(self, user, gtime, mark):
+        self._game_manager.set_ready_mark(gtime,
+                                          self.players[user],
+                                          mark)
+
     def get_next_game(self):
         return self._game_manager.get_next_game()
 

@@ -452,6 +452,24 @@ class GameManager:
 
         game.remove_player(player)
 
+    def set_ready_mark(self, gtime, player, mark):
+        if self._sport.team_size != 0:
+            raise RegisterError(f"Cannot use ready for this sport")
+
+        # Find the game
+        if gtime not in self._games:
+            raise RegisterError(f"No game for {gtime}")
+
+        games = [g for g in self._games[gtime] if player in g.players]
+        if not games:
+            raise RegisterError(f"You are not present in game for {gtime}")
+
+        game = games[0]
+        if len(game.players) < 2 and mark:
+            raise RegisterError(f"Need at least 2 players")
+
+        game.open_ready = mark
+
     def get_next_game(self):
         if not self._games:
             return None

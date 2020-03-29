@@ -53,6 +53,7 @@ class Flags(enum.IntFlag):
     Admin  = 0x04
     Score  = 0x08
     Help   = 0x10
+    Open   = 0x20
 
 
 class BadArgValue(Exception):

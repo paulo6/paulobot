@@ -163,6 +163,9 @@ class Handler(object):
         elif cmd_def.has_flag(Flags.Score) and (not ctx.sport or not ctx.sport.has_scores):
             msg.reply_to_user("Sorry, this command is not supported for "
                               "sports without scoring support")
+        elif cmd_def.has_flag(Flags.Open) and (not ctx.sport or ctx.sport.team_size != 0):
+            msg.reply_to_user("Sorry, this command is not supported for sports with "
+                              "fixed teams")
         else:
             c_msg = defs.CMessage(msg.user, cmd_def,
                                   room=msg.room,
@@ -322,9 +325,15 @@ class Handler(object):
                     continue
 
                 if (cmd_def.desc is None
-                    or not cmd_def.has_flag(flag)
-                    or ((not ctx.sport or not ctx.sport.has_scores)
-                        and cmd_def.has_flag(Flags.Score))):
+                    or not cmd_def.has_flag(flag)):
+                    continue
+
+                if cmd_def.has_flag(Flags.Score) and (
+                    not ctx.sport or not ctx.sport.has_scores):
+                    continue
+
+                if cmd_def.has_flag(Flags.Open) and (
+                    not ctx.sport or ctx.sport.team_size != 0):
                     continue
 
                 if is_group and cmd_def.muc_desc is not None:
@@ -448,6 +457,12 @@ class Handler(object):
             cmds = ((cmd, cmd_def)
                         for cmd, cmd_def in cmds
                         if not cmd_def.has_flag(Flags.Score))
+
+        # Filter out non-open ones
+        if not c_msg.sport or c_msg.sport.team_size != 0:
+            cmds = ((cmd, cmd_def)
+                        for cmd, cmd_def in cmds
+                        if not cmd_def.has_flag(Flags.Open))
 
         # Filter out hidden ones
         cmds = ((cmd, cmd_def)
