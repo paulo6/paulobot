@@ -1,19 +1,14 @@
+import asyncio
 import enum
 import transitions
 import datetime
 import collections
+import functools
+import logging
 
-
-class State(enum.Enum):
-    Empty           = enum.auto()
-    NotQuorate      = enum.auto()
-    Quorate         = enum.auto()
-    WaitingForTime  = enum.auto()
-    WaitingForHold  = enum.auto()
-    WaitingForArea  = enum.auto()
-    PlayerCheck     = enum.auto()
-    PlayersNotReady = enum.auto()
-    Rolling         = enum.auto()
+import paulobot.templates.game as template
+from paulobot.common import GameState as State
+from paulobot.common import PlayerList, GTime
 
 
 class Trigger:
@@ -30,19 +25,22 @@ class Trigger:
 # Functions that block going into PlayerCheck state
 PLAYER_CHECK_BLOCKERS = ['is_future_game', 'is_held', 'is_area_busy']
 
+GTIME_NOW = GTime(None)
+
+LOGGER = logging.getLogger(__name__)
 
 GAME_TRANSITIONS = [
     # Player added transitions
     {
         'trigger': Trigger.PlayerAdded,   'source': State.Empty,      'dest': State.NotQuorate,
-        'conditions': ['has_players']
+        'conditions': ['has_players', "has_space"]
     },
     {
         'trigger': Trigger.PlayerAdded,   'source': State.NotQuorate, 'dest': State.NotQuorate,
         'conditions': ['has_space']
     },
     {
-        'trigger': Trigger.PlayerAdded,   'source': State.NotQuorate, 'dest': State.Quorate,
+        'trigger': Trigger.PlayerAdded,   'source': [State.Empty, State.NotQuorate], 'dest': State.Quorate,
         'unless': ['has_space']
     },
 
@@ -144,23 +142,29 @@ class RegisterError(Exception):
 
 
 class Game:
-    def __init__(self, sport, time):
+    def __init__(self, sport, game_manager, gtime):
         self.sport = sport
+        self.gtime = gtime
+
+        self.created_time = datetime.datetime.now()
+        self.quorate_time = None
+        self.rolled_time = None
 
         # Need to use a list for players because sign up order is important.
-        self._players = []
+        self._players = PlayerList(sport=sport)
         self._not_ready_players = set()
         self._max_players = sport.max_players
         self._hold_info = None
         self._in_area_queue = False
-        self._time = time
+        self._open_ready = False
+        self._game_manager = game_manager
 
     # --------------------------------------------------
-    # Properties
+    # Properties used by state machine
     # --------------------------------------------------
     @property
     def has_space(self):
-        return self._max_players == 0 or len(self._players) < self._max_players
+        return (self._max_players == 0 and not self.open_ready) or len(self._players) < self._max_players
 
     @property
     def has_players(self):
@@ -168,7 +172,7 @@ class Game:
 
     @property
     def is_future_game(self):
-        return self._time is not None and self._time > datetime.datetime.now()
+        return self.gtime is not None and self.gtime > datetime.datetime.now()
 
     @property
     def is_held(self):
@@ -182,23 +186,67 @@ class Game:
     def are_players_ready(self):
         return len(self._not_ready_players) == 0
 
+
+    # --------------------------------------------------
+    # Other properties
+    # --------------------------------------------------
+    @property
+    def spaces_left(self):
+        return 0 if self._max_players == 0 else self._max_players - len(self._players)
+
     @property
     def players(self):
         return self._players
 
     @property
     def not_ready_players(self):
-        return self._not_ready_players
+        return PlayerList(self._not_ready_players)
 
     @property
-    def time(self):
-        return self._time
+    def idle_secs_left(self):
+        return None
+
+    @property
+    def pretty(self):
+        """
+        Returns MD containing pretty game string.
+
+        """
+        return template.game_string(self)
+
+    @property
+    def held_by(self):
+        return self._hold_info[0] if self._hold_info else None
+
+    @property
+    def open_ready(self):
+        return self._open_ready
+
+    @open_ready.setter
+    def open_ready(self, val):
+        if not self._max_players == 0:
+            raise Exception("Cannot set open_ready for a non-open game")
+        if val and not self._open_ready:
+            self._open_ready = True
+            self.trigger(Trigger.PlayerAdded) # pylint: disable=no-member
+        if not val and self._open_ready:
+            self._open_ready = False
+            self.trigger(Trigger.PlayerRemoved) # pylint: disable=no-member
+
+    @property
+    def time_index(self):
+        """
+        What position is this game in in the game managers list of games for
+        this time?
+
+        """
+        return self._game_manager.get_game_time_index(self)
 
     # --------------------------------------------------
     # Methods for changing game state
     # --------------------------------------------------
     def add_player(self, player):
-        if self.has_space:
+        if self.has_space and player not in self._players:
             self._players.append(player)
             self.trigger(Trigger.PlayerAdded) # pylint: disable=no-member
 
@@ -224,9 +272,17 @@ class Game:
     # State machine callbacks - should *not* be called
     # directly!
     # --------------------------------------------------
+    def on_enter_NotQuorate(self, event):
+        # Whenever we enter NotQuorate, reset open ready
+        self._open_ready = False
+
     def on_enter_Quorate(self, event):
         # Whenever we enter quorate state, try to roll
-        self._trig_roll() # pylint: disable=no-member
+        self.quorate_time = datetime.datetime.now()
+        self.trigger(Trigger.Roll) # pylint: disable=no-member
+
+    def on_enter_Rolling(self, event):
+        self.rolled_time = datetime.datetime.now()
 
     def on_exit_Rolling(self, event):
         raise StateException("Can't leave rolling state")
@@ -240,35 +296,30 @@ class Game:
         if event.transition.dest is not State.PlayerCheck:
             self.sport.area.remove_from_queue(self)
 
-    def on_enter_WaitingForTime(self, event):
-        # @@@ Start timer
-        pass
-
-    def on_exit_WaitingForTime(self, event):
-        # @@@ Stop timer
-        pass
-
     def on_enter_PlayerCheck(self, event):
         # First check whether any players are in another rolled game.
         # If so don't do anything else, and let the game manager remove
         # them.
         self._not_ready_players = {
-            p for p in self._players if p.is_currently_rolled
+            p for p in self._players if p.user.is_currently_rolled
         }
 
         # If there are no clashed players, then count ourselves as rolling
         # from now, so another game doesn't jump the queue whilst we wait
         # for people to ready up.
-        if self.are_players_ready():
+        if self.are_players_ready:
             # Count ourselves as rolling from now, so another game
             # don't jump ahead just because we are waiting for our
             # players.
             #
             # The game manager will take care of messaging players.
             self.sport.area.add_to_rolling(self)
-            self._not_ready_players = {p for p in self._players if p.is_idle}
+            self._not_ready_players = {p for p in self._players if p.user.is_idle}
 
-            if not self.are_players_ready():
+            if self.are_players_ready:
+                # Players are ready!
+                self.trigger(Trigger.PlayerReady) # pylint: disable=no-member
+            else:
                 # @@@ Start timer
                 pass
 
@@ -279,13 +330,26 @@ class Game:
         # Remove ourselves from the rolling list if we are not
         # rolling.
         if event.transition.dest is not State.Rolling:
-            self.sport.area.remove_from_queue(self)
+            self.sport.area.remove_from_rolling(self)
 
         # @@@ Stop timer
 
 
+def _reorganize_lock(fn):
+    @functools.wraps(fn)
+    def inner(self, *args, **kwargs):
+        if self._reorg_in_progress:
+            return
+        self._reorg_in_progress = True
+        try:
+            return fn(self, *args, **kwargs)
+        finally:
+            self._reorg_in_progress = False
+    return inner
+
 class GameManager:
-    def __init__(self, sport):
+    def __init__(self, pb, sport):
+        self._pb = pb
         self._sport = sport
 
         # Create the state machine
@@ -297,12 +361,14 @@ class GameManager:
 
         self._game_state_handlers = {
             State.Empty: self._game_state_empty,
-            State.Rolling: self._game_state_rolling,
+            State.Quorate: lambda e: False, # Don't announce quorate it's a transient state
             State.PlayerCheck: self._game_state_player_check,
             State.PlayersNotReady: self._game_state_player_check,
+            State.Rolling: self._game_state_rolling,
         }
 
         self._games = collections.defaultdict(list)
+        self._reorg_in_progress = False
 
     def __repr__(self):
         return f"<GameManager({self._sport.name})>"
@@ -311,89 +377,226 @@ class GameManager:
     # --------------------------------------------------
     # Public methods
     # --------------------------------------------------
-    def register(self, time, player):
+    def register(self, gtime, player):
         # Make sure the user is not already in a game for this
         # time.
-        if any(g for g in self._games.get(time, [])
+        if any(g for g in self._games.get(gtime, [])
                if player in g.players):
             raise RegisterError(
-                f"You are already registered for a game for {time}")
+                f"You are already registered for a game for {gtime}")
 
         # Check to see whether there is a game with space at this
         # time, if not, create a new one.
-        if (time not in self._games or
-            self._games[time][-1].state != State.NotQuorate):
-            game = self._create_game(time)
-            self._games[time].append(game)
+        if (gtime not in self._games or
+            self._games[gtime][-1].state != State.NotQuorate):
+            game = self._create_game(gtime)
         else:
-            game = self._games[time][-1]
+            game = self._games[gtime][-1]
 
         game.add_player(player)
 
-    def unregister(self, time, player):
-        if time not in self._games:
-            raise RegisterError(f"There are no games for {time}")
+    def unregister(self, gtime, player):
+        if gtime not in self._games:
+            raise RegisterError(f"There are no games for {gtime}")
 
         try:
-            game = next(g for g in self._games[time]
+            game = next(g for g in self._games[gtime]
                         if player in g.players)
         except StopIteration:
-            raise RegisterError(f"You are not registered for a game for {time}")
+            raise RegisterError(f"You are not registered for a game for {gtime}")
 
         game.remove_player(player)
 
+    def get_next_game(self):
+        if not self._games:
+            return None
+
+        # Return the first earliest game!
+        return self._games[sorted(self._games.keys())[0][0]]
+
+    def get_game_time_index(self, game):
+        return self._games[game.gtime].index(game)
+
+    def yield_games(self):
+        for game in (g for gs in self._games.values()
+                       for g in gs):
+            yield game
 
     # --------------------------------------------------
     # Private game state handlers
     # --------------------------------------------------
     def _finalize_event(self, event):
-        announced = False
+        announce_game = True
         if event.model.state in self._game_state_handlers:
-            announced = self._game_state_handlers[event.model.state](event)
-
+            announce_game = self._game_state_handlers[event.model.state](event)
 
         # Announce the game if a handler hasn't already
-        if not announced:
+        if announce_game:
             self._announce_game(event.model)
+
+        # If the event was an unregister, see whether players can be shuffled!
+        if event.event is Trigger.PlayerRemoved:
+            self._reorganize_games(combine_gtime=event.model.gtime)
+
+        # Check whether this is an old game that needs to be promoted to now.
+        if event.model.state is State.NotQuorate:
+            self._reorganize_games(check_old_gtime=event.model.gtime)
+
 
     def _game_state_empty(self, event):
         self._delete_game(event.model)
-        self._sport.announce(f"Game for {event.model.time} removed!")
-        return True
+        # Don't announce deletes if this is during a reorg, as we may be
+        # moving a game into its place.
+        if not self._reorg_in_progress:
+            self._sport.announce(f"Game for {event.model.gtime} removed!")
+        return False
 
     def _game_state_rolling(self, event):
+        # Announce ASAP!
+        self._announce_game(event.model)
+
         self._delete_game(event.model)
-        self._sport.announce(f"Game for {event.model.time} Rolling!")
-        return True
+        self._sport.area.game_rolled(event.model, None) # @@@ RESULT
+        return False
 
     def _game_state_player_check(self, event):
         # First check for any players in other games
-        clashed = [p for p in event.model.not_ready_players()
-                     if p.is_currently_rolled]
+        clashed = [p for p in event.model.not_ready_players
+                     if p.user.is_currently_rolled]
         if clashed:
             # @@@ Announce removals
             event.model.remove_players(clashed)
 
         # Only message players when we enter this state
-        elif event.model.transition.source is not State.PlayersNotReady:
-            # @@@ Message not ready players
-            pass
+        elif event.transition.source is not State.PlayersNotReady:
+            for player in event.model.not_ready_players:
+                player.user.send_msg(template.PLAYER_IDLE.format(self._sport.name,
+                                                                 event.model.gtime))
 
         # If there were clashed players, then we announce we
-        # are removing people, then entering NotQuorate will do an
-        # announcement.
-        return len(clashed) > 0
+        # are removing people, then entering NotQuorate will do a
+        # game announcement. If there were no idle players then
+        # do not announce this transition.
+        return len(clashed) == 0 and not event.model.are_players_ready
+
+    def _rearm_future_timer(self):
+        if self._pb.timer.is_scheduled(self._future_timer_cb):
+            self._pb.timer.cancel(self._future_timer_cb)
+        now = datetime.datetime.now()
+        times = sorted(t for t in self._games.keys()
+                       if not t.is_for_now and t > now)
+        if times:
+            self._pb.timer.schedule_at(times[0].val,
+                                       self._future_timer_cb)
+
+    def _future_timer_cb(self):
+        now = datetime.datetime.now()
+
+
+
+        # Prod each old game that is waiting for the timer
+        past_times = sorted(t for t in self._games.keys()
+                            if not t.is_for_now and t <= now)
+        LOGGER.info("Future timer fired! %s past times found",
+                    len(past_times))
+        for game in (g for t in past_times
+                       for g in self._games[t]
+                       if g.state is State.WaitingForTime):
+            game.trigger(Trigger.TimerFired)
+
+        # See whether there are any non quorate games that
+        # can be purged!
+        for time in past_times:
+            self._reorganize_games(check_old_gtime=time)
+
+        # Re-arm the timer for next future game
+        self._rearm_future_timer()
+
 
     # --------------------------------------------------
     # Private game utilities
     # --------------------------------------------------
-    def _create_game(self, time):
-        game = Game(self._sport, time)
+    def _create_game(self, gtime):
+        # Don't allow a new game in the past
+        if not gtime.is_for_now and gtime < datetime.datetime.now():
+            raise RegisterError("Cannot start a game in the past!")
+        game = Game(self._sport, self, gtime)
         self._machine.add_model(game)
+        new_time = gtime not in self._games
+        self._games[gtime].append(game)
+
+        # Re-arm the future timer as this game might be sooner than
+        # the previous future game time.
+        if not gtime.is_for_now and new_time:
+            self._rearm_future_timer()
         return game
 
     def _delete_game(self, game):
         self._machine.remove_model(game)
+        self._games[game.gtime].remove(game)
+        if len(self._games[game.gtime]) == 0:
+            del self._games[game.gtime]
+
+            # Re-arm the future timer as this game might have been the
+            # game the timer was armed for
+            if not game.gtime.is_for_now:
+                self._rearm_future_timer()
 
     def _announce_game(self, game):
-        self._sport.announce(f"Game for {game.time} state is {game.state}")
+        self._sport.announce(game.pretty)
+
+    @_reorganize_lock
+    def _reorganize_games(self, check_old_gtime=None, combine_gtime=None):
+        # If we have been asked to check an old time, find any non-quorate
+        # games in the past and move them.
+        if (check_old_gtime is not None and
+            check_old_gtime in self._games and
+            not check_old_gtime.is_for_now and
+            check_old_gtime <= datetime.datetime.now()):
+
+            LOGGER.info("Try to move old games for %s", check_old_gtime)
+
+            # Move any non-quorate games. Games that are quorate leave alone
+            # to preserve the player group so they can roll in peace!
+            old_games = [g for g in self._games[check_old_gtime]
+                         if g.state is State.NotQuorate]
+            if old_games:
+                self._games[GTIME_NOW].extend(old_games)
+                for game in old_games:
+                    game.gtime = GTIME_NOW
+
+                # Remove time entry from list if we moved all
+                # the games
+                if len(self._games[check_old_gtime]) == 0:
+                    del self._games[check_old_gtime]
+
+                # Now sort the games for now by creation time given we have added some
+                self._games[GTIME_NOW].sort(key=lambda g: g.created_time)
+                self._sport.announce(f"Changed {len(old_games)} past game(s) for {check_old_gtime} "
+                                      "into games for now")
+
+                # We've moved some games to now, see if they can be combined
+                combine_gtime = GTIME_NOW
+
+        # If there a multiple games for the combine game time, then see whether
+        # they can be combined.
+        if combine_gtime is not None and len(self._games[combine_gtime]) > 1:
+            self._sport.announce(
+                "Checking to see if any players can be promoted for games for {combine_gtime}...")
+
+            # Start at the first game and shuffle players down from the
+            # one above, if there is space. Walk the list by index as
+            # we may delete the game ahead of us if we empty it.
+            games = self._games[combine_gtime]
+            idx = 0
+            while idx < len(games) - 1:
+                if games[idx].has_space:
+                    spaces = games[idx].spaces_left
+                    if spaces == 0:
+                        spaces = len(games[idx])
+
+                    players = games[idx + 1].players[:spaces]
+                    games[idx + 1].remove_players(players)
+                    games[idx].add_players(players)
+                # Move onto next game
+                idx += 1

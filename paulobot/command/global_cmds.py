@@ -3,15 +3,21 @@
 #
 import datetime
 
-from .. import util
+from .. import common
 
 from . import defs
 from .defs import (CommandError, Flags, CmdDef)
+
+from paulobot.common import MD
 
 # Global command list (e.g. "xxx")
 _CMDS_GLOBAL = {
     'time'          : CmdDef('Show times',
                              Flags.Direct | Flags.Group),
+    'register'      : CmdDef(None,
+                             Flags.Direct | Flags.Group),
+    'timers'        : CmdDef('Show timers',
+                             Flags.Direct | Flags.Admin),
 }
 
 
@@ -34,3 +40,10 @@ class ClassHandler(defs.ClassHandlerInterface):
                         last_boot)
         c_msg.reply(msg)
 
+    def _cmd_register(self, c_msg):
+        c_msg.reply(f"You are already registered {c_msg.user.name}!")
+
+    def _cmd_timers(self, c_msg):
+        msg = "\n".join(f"{w} {c}" for w, c in sorted(self.pb.timer.callbacks,
+                                                      key=lambda t: t[0]))
+        c_msg.reply(MD(f"```\n{msg}```\n"))

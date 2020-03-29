@@ -46,6 +46,19 @@ class Area:
         if game in self._queue:
             self._queue.remove(game)
 
+    def add_to_rolling(self, game):
+        if game not in self._rolling:
+            self._rolling.append(game)
+
+    def remove_from_rolling(self, game):
+        if game not in self._rolling:
+            self._rolling.remove(game)
+
+    def queue_index(self, game):
+        if game in self._queue:
+            return self._queue.index(game)
+        return None
+
     def game_rolled(self, game, result):
         if game in self._rolling:
             self._rolling.remove(game)
@@ -119,6 +132,7 @@ class LocationManager:
                     area = loc.areas[c_sport["area"]]
 
                 sport = paulobot.sport.Sport(
+                    self._pb,
                     loc,
                     c_sport["name"],
                     c_sport.get("description", ""),

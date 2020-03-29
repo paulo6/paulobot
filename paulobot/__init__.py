@@ -4,6 +4,7 @@ import argparse
 import re
 import webexteamssdk
 import datetime
+import asyncio
 
 import paulobot.webex
 import paulobot.command
@@ -12,7 +13,11 @@ from paulobot.user import UserManager
 from paulobot.location import LocationManager
 from paulobot.config import Config
 
+from paulobot.common import MD
+
 __version__ = "1.0.0"
+
+LOGGER = logging.getLogger(__name__)
 
 LOGGING_FORMAT = '{asctime:<8s} {name:<20s} {levelname:<8s} {message}'
 LOGGING_DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
@@ -34,9 +39,8 @@ class Room:
     def __str__(self):
         return f"{self.id} ({self.title})"
 
-    def send_msg(self, text, markdown=None):
-        self._pb.send_message(text=text, markdown=markdown,
-                              room_id=self.id)
+    def send_msg(self, text):
+        self._pb.send_message(text, room_id=self.id)
 
 
 class Message(object):
@@ -72,6 +76,53 @@ class SendMsgHandler(logging.Handler):
                 pass
 
 
+class Timer:
+    def __init__(self, pb):
+        self._callbacks = {}
+        self._task = None
+        self._pb = pb
+
+    def schedule_at(self, when, callback):
+        LOGGER.info("Callback %s scheduled for %s",
+                    callback, when)
+        self._callbacks[callback] = when
+        if self._task is None:
+            self._task = self._pb.main_loop.create_task(self._checker())
+
+    def is_scheduled(self, callback):
+        return callback in self._callbacks
+
+    def cancel(self, callback):
+        del self._callbacks[callback]
+
+    @property
+    def callbacks(self):
+        for callback, when in self._callbacks.items():
+            yield (when, callback)
+
+    async def _checker(self):
+        while True:
+            await asyncio.sleep(0.01)
+            self._exec_callbacks()
+
+    def _exec_callbacks(self):
+        for callback in self._get_ready_to_exec():
+            del self._callbacks[callback]
+            try:
+                callback()
+            except:
+                LOGGER.exception("An exception occurred while processing timer "
+                                 "event. Ignoring.")
+
+    def _get_ready_to_exec(self):
+        now = datetime.datetime.now()
+        return {
+            callback
+            for callback, when in self._callbacks.items()
+            if when <= now
+        }
+
+
 class PauloBot:
     def __init__(self, args):
         # Initialization order:
@@ -84,25 +135,38 @@ class PauloBot:
         self._webex = paulobot.webex.Client(self.config.data["token"],
                                             on_message=self._on_message,
                                             on_room_join=self._on_room_join)
-
+        self.timer = Timer(self)
         self.user_manager = UserManager(self)
         self.loc_manager = LocationManager(self)
-
         self.command_handler = paulobot.command.Handler(self)
         self.boot_time = datetime.datetime.now()
         self.admins = set(self.config.data.get("admins", []))
-        self.notify_list = self.config.data.get("admins", [])
+        self.notify_list = self.config.data.get("notify", [])
+        self.main_loop = asyncio.get_event_loop()
 
     def run(self):
-        self._webex.run()
+        self._webex.run(self.main_loop)
 
-    def send_message(self, text, markdown=None, room_id=None, user_email=None):
+    def send_message(self, text, room_id=None, user_email=None):
+        """
+        Send a message.
+
+        To send markdown, use an instance of common.MD
+
+        """
         if not room_id and not user_email:
             raise Exception("One of room_id or user_email must be specified!")
-        logging.info("Sending message to '%s': %s",
-                     self._webex.get_room_title(room_id) if room_id
-                     else user_email,
-                     text)
+
+        # If this is a markdown object, then extract the fields
+        if isinstance(text, MD):
+            markdown = text.markdown
+            text = text.plain
+        else:
+            markdown = None
+
+        logging.info("Sending %s message to '%s'",
+                     "group" if room_id else "direct",
+                     self._webex.get_room_title(room_id) if room_id else user_email)
 
         # Sometimes we get transient errors when sending, so retry until
         # success, or if we reach max retries
@@ -117,7 +181,8 @@ class PauloBot:
                                                 markdown=markdown)
             except webexteamssdk.exceptions.ApiError as e:
                 if attempt > MESSAGE_SEND_ATTEMPTS:
-                    logging.exception("Giving up trying to send message")
+                    logging.exception("Giving up trying to send message text: %s",
+                                      markdown if text is None else text)
                 else:
                     logging.error("Failed to send message (%s), retrying (%s)...",
                                   e, attempt)

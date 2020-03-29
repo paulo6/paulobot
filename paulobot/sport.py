@@ -1,6 +1,7 @@
 import paulobot.skill
 
 from paulobot.game import GameManager
+from paulobot.common import MD
 
 
 class Player(paulobot.skill.Player):
@@ -12,7 +13,7 @@ class Player(paulobot.skill.Player):
 
 
 class Sport:
-    def __init__(self, location, name, desc, area, team_size,
+    def __init__(self, pb, location, name, desc, area, team_size,
                 has_scores=True, allow_draws=False):
         self.location = location
         self.name = name
@@ -22,19 +23,27 @@ class Sport:
         self.area = area
         # Players keyed by User object
         self.players = {}
-        self._game_manager = GameManager(self)
+        self._game_manager = GameManager(pb, self)
 
     @property
     def max_players(self):
         return self.team_size * 2
 
-    def game_register(self, user, time):
-        self._game_manager.register(time,
+    @property
+    def games(self):
+        return sorted(self._game_manager.yield_games(),
+                      key=lambda g: g.gtime)
+
+    def game_register(self, user, gtime):
+        self._game_manager.register(gtime,
                                     self.players[user])
 
-    def game_unregister(self, user, time):
-        self._game_manager.unregister(time,
-                                    self.players[user])
+    def game_unregister(self, user, gtime):
+        self._game_manager.unregister(gtime,
+                                      self.players[user])
+
+    def get_next_game(self):
+        return self._game_manager.get_next_game()
 
     def create_player(self, user):
         if user.email not in self.players:
@@ -42,4 +51,8 @@ class Sport:
 
     def announce(self, message):
         if self.location.room:
-            self.location.room.send_msg(f"[{self.name.upper()}]: {message}")
+            if isinstance(message, MD):
+                message = MD(f"[{self.name.upper()}] {message.markdown}")
+            else:
+                message = f"[{self.name.upper()}] {message}"
+            self.location.room.send_msg(message)

@@ -105,7 +105,7 @@ class Client(object):
                 raise Exception("Failed to get device info")
         return device_info
 
-    def run(self):
+    def run(self, main_loop):
         if self._device_info is None:
             self._device_info = self._get_device_info()
         self.my_emails = self.api.people.me().emails
@@ -129,7 +129,7 @@ class Client(object):
                     LOGGER.debug("Received raw data: %s", data)
                     try:
                         msg = json.loads(data)
-                        loop = asyncio.get_event_loop()
+                        loop = asyncio.get_running_loop()
                         await loop.run_in_executor(None, self._process_message, msg)
                     except:
                         LOGGER.exception("An exception occurred while processing message. Ignoring.")
@@ -137,7 +137,7 @@ class Client(object):
         # Retry on error
         while True:
             try:
-                asyncio.get_event_loop().run_until_complete(_run())
+                main_loop.run_until_complete(_run())
             except (websockets.exceptions.ConnectionClosedError, socket.gaierror) as e:
                 LOGGER.error("Connection error: %s. Retrying in 1s...", e)
                 time.sleep(1)

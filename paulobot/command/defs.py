@@ -9,7 +9,8 @@ import collections
 import functools
 
 import paulobot.game
-from .. import util
+from .. import common
+from paulobot.common import MD
 
 # String for 'next' game
 TIME_NEXT = "next"
@@ -53,33 +54,6 @@ class Flags(enum.IntFlag):
     Admin  = 0x04
     Score  = 0x08
     Help   = 0x10
-
-
-MAIN_HELP_PREAMBLE = """
-##Welcome to PauloBot!
-
-PauloBot's purpose in life is to help you organise games in the office, and track results.
-
-{}
-
-{}
-"""
-
-MAIN_HELP_LOCATION = """
----
-###The various sports that PauloBot supports for your locations are:
-{}
-
-Type `help <sport>` for details about sports commands.
-
----
-###The following playing areas are available for your location:
-{}
-
-Type `help <area>` for details about area commands.
-
----
-"""
 
 
 class BadArgValue(Exception):
@@ -510,13 +484,13 @@ class ArgParser(collections.abc.MutableMapping):
                 return None, 0
             elif arg_def.arg_type == arg_def.ARG_KEYWORD:
                 raise BadArgValue("Invalid keyword '{}': {}"
-                                  .format(util.safe_string(values[0]),
+                                  .format(common.safe_string(values[0]),
                                            str(e)))
             else:
                 value = e.bad_value if e.bad_value is not None else values[0]
                 raise BadArgValue("Invalid {} value '{}': {}"
                                   .format(arg_def.name,
-                                           util.safe_string(value),
+                                           common.safe_string(value),
                                            str(e)))
 
     def _value_matches_next_def(self, values):
@@ -568,7 +542,7 @@ class ArgParser(collections.abc.MutableMapping):
 
     def _parse_type_time(self, arg_def, values):
         value = values[0]
-        if value in (util.TIME_NOW, TIME_NEXT):
+        if value in (common.TIME_NOW, TIME_NEXT):
             return value, 1
         else:
             try:
@@ -608,8 +582,9 @@ class ArgParser(collections.abc.MutableMapping):
 
         # Add special detail for time
         if arg_def.ARG_TIME in [a.arg_type for a in arg_def.choices]:
-            error_msg += ". Supported time formats: {}".format(
+            error_msg += ".\nSupported time formats: {}".format(
                                 ", ".join(d for d, _, _ in TIME_FORMATS))
+            error_msg += f"\nMinutes must be a multiple of {arg_def.time_granularity}"
         raise BadArgValue(error_msg)
 
     def _parse_type_keyword(self, arg_def, values):

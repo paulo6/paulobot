@@ -2,12 +2,15 @@ import logging
 import operator
 import collections
 
-from .. import util
+from .. import common
 from . import global_cmds
 from . import sport_cmds
 from . import defs
 
-from .defs import (ParseError, CommandError, Flags, MAIN_HELP_PREAMBLE, MAIN_HELP_LOCATION)
+from .defs import (ParseError, CommandError, Flags)
+
+from paulobot.common import MD
+from paulobot.templates.commands import MAIN_HELP_PREAMBLE, MAIN_HELP_LOCATION
 
 LOGGER = logging.getLogger(__name__)
 
@@ -147,17 +150,17 @@ class Handler(object):
             msg.reply_to_user("Unknown {} command {}. Try help"
                               .format("group-chat" if msg.is_group
                                       else "direct-chat",
-                                      util.safe_string(ctx.cmd_name)))
+                                      common.safe_string(ctx.cmd_name)))
             if cmd_def is not None and cmd_def.has_flag(Flags.Admin):
                 LOGGER.info("{} just attempted to use admin command: {}"
                             .format(str(msg.user),
-                                    util.safe_string(msg.body)))
+                                    common.safe_string(msg.body)))
         elif msg.is_group and not cmd_def.has_flag(Flags.Group):
             msg.reply_to_user("{} does not have a group-chat version"
-                                .format(util.safe_string(ctx.cmd_name)))
+                                .format(common.safe_string(ctx.cmd_name)))
         elif not msg.is_group and not cmd_def.has_flag(Flags.Direct):
             msg.reply_to_user("{} does not have a direct-chat version"
-                                .format(util.safe_string(ctx.cmd_name)))
+                                .format(common.safe_string(ctx.cmd_name)))
         elif cmd_def.has_flag(Flags.Score) and (not ctx.sport or not ctx.sport.has_scores):
             msg.reply_to_user("Sorry, this command is not supported for "
                               "sports without scoring support")
@@ -190,7 +193,7 @@ class Handler(object):
                     if cmd_def.has_flag(Flags.Admin):
                         LOGGER.warning("User %s executing admin command '%s'",
                                        msg.user,
-                                       util.safe_string(msg.body))
+                                       common.safe_string(msg.text))
                     ctx.handler_class.handle_command(ctx.cmd_name, c_msg)
 
             except CommandError as e:
@@ -230,11 +233,11 @@ class Handler(object):
 
 
     def send_html_msg(self, user, text, room=None):
-        markdown = "```\n{}\n```".format(text)
+        text = MD("```\n{}\n```".format(text), text)
         if room is None:
-            self._pb.send_message(user_email=user.email, text=text, markdown=markdown)
+            self._pb.send_message(text, user_email=user.email)
         else:
-            self._pb.send_message(room_id=room.id, text=text, markdown=markdown)
+            self._pb.send_message(text, room_id=room.id)
 
     def get_table(self, widths, aligns, titles, rows, pad=4):
         # Check we have a consistent number of stuff
@@ -303,7 +306,7 @@ class Handler(object):
                 "  - " + "\n  - ".join(f"{a.name} - {a.desc}" for a in areas))
 
         help = MAIN_HELP_PREAMBLE.format(locations, global_help)
-        user.send_msg(text=None, markdown=help)
+        user.send_msg(MD(help))
 
     def _get_help_for_class(self, user, ctx):
         help = ""
@@ -337,12 +340,12 @@ class Handler(object):
         if extra_info is not None:
             help += "\n" + extra_info
 
-        help += f"\n\n###{ctx.handler_title} direct-chat commands:"
+        help += f"\n\n**{ctx.handler_title} direct-chat commands**"
         help += "\n```\n"
         help += add_cmds(Flags.Direct, False)
         help += "\n```\n"
 
-        help += f"\n###{ctx.handler_title} group-chat commands:"
+        help += f"\n**{ctx.handler_title} group-chat commands**"
         help += "\n```\n"
         help += add_cmds(Flags.Group, True)
         help += "\n```\n"
@@ -352,7 +355,7 @@ class Handler(object):
 
     def _handle_help_class(self, user, ctx):
         help = self._get_help_for_class(user, ctx)
-        user.send_msg(text=None, markdown=help)
+        user.send_msg(MD(help))
 
     def _handle_help_cmd(self, user, group_name, handler_class, cmd):
         help = "Help for '{}{}'".format(
@@ -363,7 +366,7 @@ class Handler(object):
         cmd_def = handler_class.cmd_defs.get(cmd)
         if cmd_def is None:
             raise CommandError("No such command '{}'"
-                               .format(util.safe_string(cmd)),
+                               .format(common.safe_string(cmd)),
                                user.send_msg)
 
         # If alias, then grab alias

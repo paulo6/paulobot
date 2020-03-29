@@ -16,10 +16,6 @@ class User:
         return f"<User({self.email})>"
 
     @property
-    def is_admin(self):
-        return self.email in self._pb.admins
-
-    @property
     def name(self):
         return self.first_name if self.first_name else self.full_name
 
@@ -27,9 +23,24 @@ class User:
     def username(self):
         return self.email.split("@")[0]
 
-    def send_msg(self, text, markdown=None):
-        self._pb.send_message(text=text, markdown=markdown,
-                              user_email=self.email)
+    @property
+    def tag(self):
+        return "<@personEmail:{}|{}>".format(self.email, self.username)
+
+    @property
+    def is_admin(self):
+        return self.email in self._pb.admins
+
+    @property
+    def is_idle(self):
+        return False
+
+    @property
+    def is_currently_rolled(self):
+        return False
+
+    def send_msg(self, text):
+        self._pb.send_message(text, user_email=self.email)
 
     def update_last_msg(self, update_idle_games=False):
         pass
