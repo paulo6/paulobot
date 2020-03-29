@@ -8,7 +8,7 @@ from .. import common
 from . import defs
 from .defs import (CommandError, Flags, CmdDef, catch_user_errors)
 
-from paulobot.common import MD, MD_LINE_SPLIT
+from paulobot.common import MD_LINE_SPLIT
 import paulobot.templates.commands as template
 
 # Default arg string to use for time
@@ -104,7 +104,7 @@ class ClassHandler(defs.ClassHandlerInterface):
                                       for g in c_msg.sport.games)
 
         c_msg.reply(template.SPORT_STATUS.format(
-            sport=c_msg.sport.area.name.upper(),
+            sport=c_msg.sport.name.upper(),
             games=text,
             area=f"{c_msg.sport.area.name.title()} free",
             pending=f"None",

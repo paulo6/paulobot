@@ -13,8 +13,6 @@ from paulobot.user import UserManager
 from paulobot.location import LocationManager
 from paulobot.config import Config
 
-from paulobot.common import MD
-
 __version__ = "1.0.0"
 
 LOGGER = logging.getLogger(__name__)
@@ -151,18 +149,10 @@ class PauloBot:
         """
         Send a message.
 
-        To send markdown, use an instance of common.MD
-
         """
         if not room_id and not user_email:
             raise Exception("One of room_id or user_email must be specified!")
 
-        # If this is a markdown object, then extract the fields
-        if isinstance(text, MD):
-            markdown = text.markdown
-            text = text.plain
-        else:
-            markdown = None
 
         logging.info("Sending %s message to '%s'",
                      "group" if room_id else "direct",
@@ -177,12 +167,11 @@ class PauloBot:
                 done = True
                 self._webex.api.messages.create(roomId=room_id,
                                                 toPersonEmail=user_email,
-                                                text=text,
-                                                markdown=markdown)
+                                                markdown=text)
             except webexteamssdk.exceptions.ApiError as e:
                 if attempt > MESSAGE_SEND_ATTEMPTS:
                     logging.exception("Giving up trying to send message text: %s",
-                                      markdown if text is None else text)
+                                      text)
                 else:
                     logging.error("Failed to send message (%s), retrying (%s)...",
                                   e, attempt)

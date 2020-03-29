@@ -1,6 +1,4 @@
-from paulobot.common import MD
-
-SPORT_STATUS = MD("""**{sport} Games status**  
+SPORT_STATUS = """**{sport} Games status**  
 {games}
 
 
@@ -10,7 +8,7 @@ SPORT_STATUS = MD("""**{sport} Games status**
 
 **Pending {sport} results**  
 {pending}
-""")
+"""
 
 
 MAIN_HELP_PREAMBLE = """

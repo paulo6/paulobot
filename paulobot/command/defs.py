@@ -10,7 +10,6 @@ import functools
 
 import paulobot.game
 from .. import common
-from paulobot.common import MD
 
 # String for 'next' game
 TIME_NEXT = "next"

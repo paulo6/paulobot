@@ -1,7 +1,6 @@
 import paulobot.skill
 
 from paulobot.game import GameManager
-from paulobot.common import MD
 
 
 class Player(paulobot.skill.Player):
@@ -51,8 +50,4 @@ class Sport:
 
     def announce(self, message):
         if self.location.room:
-            if isinstance(message, MD):
-                message = MD(f"[{self.name.upper()}] {message.markdown}")
-            else:
-                message = f"[{self.name.upper()}] {message}"
-            self.location.room.send_msg(message)
+            self.location.room.send_msg(f"[{self.name.upper()}] {message}")

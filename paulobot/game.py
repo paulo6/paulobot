@@ -208,10 +208,6 @@ class Game:
 
     @property
     def pretty(self):
-        """
-        Returns MD containing pretty game string.
-
-        """
         return template.game_string(self)
 
     @property

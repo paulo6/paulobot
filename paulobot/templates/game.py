@@ -1,6 +1,6 @@
 import datetime
 
-from paulobot.common import MD, GameState, TimeDelta
+from paulobot.common import GameState, TimeDelta
 
 G_NOT_QUORATE_SPACES = "Game for {time} -- {players} +{spaces}"
 G_NOT_QUORATE_OPEN = "Game for {time} -- {players} +any (until 'ready' issued)"
@@ -59,4 +59,4 @@ def game_string(game):
         res = G_ROLL.format(time=time,
                             players=game.players.tagged)
 
-    return MD(res)
+    return res

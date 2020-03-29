@@ -30,50 +30,6 @@ class GameState(enum.Enum):
     Rolling         = enum.auto()
 
 
-class MD:
-    """
-    Class used to wrap a markdown string, so it can be detected as
-    markdown when sending a message.
-
-    """
-    __slots__ = ["plain", "markdown"]
-    def __init__(self, markdown, plain=None):
-        if isinstance(markdown, MD):
-            raise Exception("Nested MD not supported!")
-        self.markdown = markdown
-        self.plain = plain
-
-    def __repr__(self):
-        return f"<MD('{self.markdown}', '{self.plain}')>"
-
-    def format(self, *args, **kwargs):
-        """
-        Format the markdown and plain properties.
-
-        Can pass other MD objects as arguments, and the appropriate
-        fields will be used.
-        """
-        # Walk each slot, and put fixed up version in the fixed
-        # dictionary
-        fixed = {}
-        for slot in self.__slots__:
-            # Fixup an element in args/kwargs
-            def fixup(a):
-                if isinstance(a, tuple) and isinstance(a[1], MD):
-                    return a[0], getattr(a[1], slot)
-                if isinstance(a, MD):
-                    return getattr(a, slot)
-                return a
-            val = getattr(self, slot)
-            if val is None:
-                fixed[slot] = None
-            else:
-                fixed[slot] = getattr(self, slot).format(
-                    *map(fixup, args),
-                    **dict(map(fixup, kwargs.items()))
-                )
-        return MD(**fixed)
-
 
 class PlayerList(list):
     """

@@ -9,7 +9,6 @@ from . import defs
 
 from .defs import (ParseError, CommandError, Flags)
 
-from paulobot.common import MD
 from paulobot.templates.commands import MAIN_HELP_PREAMBLE, MAIN_HELP_LOCATION
 
 LOGGER = logging.getLogger(__name__)
@@ -233,7 +232,7 @@ class Handler(object):
 
 
     def send_html_msg(self, user, text, room=None):
-        text = MD("```\n{}\n```".format(text), text)
+        text = "```\n{}\n```".format(text)
         if room is None:
             self._pb.send_message(text, user_email=user.email)
         else:
@@ -306,7 +305,7 @@ class Handler(object):
                 "  - " + "\n  - ".join(f"{a.name} - {a.desc}" for a in areas))
 
         help = MAIN_HELP_PREAMBLE.format(locations, global_help)
-        user.send_msg(MD(help))
+        user.send_msg(help)
 
     def _get_help_for_class(self, user, ctx):
         help = ""
@@ -355,7 +354,7 @@ class Handler(object):
 
     def _handle_help_class(self, user, ctx):
         help = self._get_help_for_class(user, ctx)
-        user.send_msg(MD(help))
+        user.send_msg(help)
 
     def _handle_help_cmd(self, user, group_name, handler_class, cmd):
         help = "Help for '{}{}'".format(

@@ -8,8 +8,6 @@ from .. import common
 from . import defs
 from .defs import (CommandError, Flags, CmdDef)
 
-from paulobot.common import MD
-
 # Global command list (e.g. "xxx")
 _CMDS_GLOBAL = {
     'time'          : CmdDef('Show times',
@@ -44,6 +42,10 @@ class ClassHandler(defs.ClassHandlerInterface):
         c_msg.reply(f"You are already registered {c_msg.user.name}!")
 
     def _cmd_timers(self, c_msg):
-        msg = "\n".join(f"{w} {c}" for w, c in sorted(self.pb.timer.callbacks,
-                                                      key=lambda t: t[0]))
-        c_msg.reply(MD(f"```\n{msg}```\n"))
+        timers = sorted(self.pb.timer.callbacks,
+                        key=lambda t: t[0])
+        if timers:
+            msg = "\n".join(f"{w} -- {c}" for w, c in timers)
+            c_msg.reply(f"```\n{msg}\n```\n")
+        else:
+            c_msg.reply("No timers")
