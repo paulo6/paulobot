@@ -2,7 +2,8 @@
 import paulobot.sport
 
 class Area:
-    def __init__(self, name, desc, size=1):
+    def __init__(self, location, name, desc, size=1):
+        self.location = location
         self.name = name
         self.desc = desc
         self.size = size
@@ -19,6 +20,9 @@ class Area:
 
         # Manual busy details
         self._manual_busy = None
+
+    def __str__(self):
+        return self.name
 
     def is_busy(self, game=None):
         # If there's a hold then it's busy!
@@ -74,6 +78,9 @@ class Location:
         self.areas = {}
         self.users = set()
 
+    def __str__(self):
+        return self.name
+
     def add_user(self, user):
         for sport in self.sports.values():
             sport.create_player(user)
@@ -120,7 +127,8 @@ class LocationManager:
             self.locations[loc.name] = loc
 
             for c_area in c_loc.areas:
-                area = Area(c_area.name,
+                area = Area(loc,
+                            c_area.name,
                             c_area.desc,
                             c_area.size)
                 loc.areas[area.name] = area

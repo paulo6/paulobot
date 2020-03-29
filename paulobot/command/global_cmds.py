@@ -12,10 +12,17 @@ from .defs import (CommandError, Flags, CmdDef)
 _CMDS_GLOBAL = {
     'time'          : CmdDef('Show times',
                              Flags.Direct | Flags.Group),
-    'register'      : CmdDef(None,
-                             Flags.Direct | Flags.Group),
     'timers'        : CmdDef('Show timers',
                              Flags.Direct | Flags.Admin),
+
+    # Hidden commands
+    'register'      : CmdDef(None,
+                             Flags.Direct | Flags.Group),
+
+    'hello'         : CmdDef(None,
+                             Flags.Direct | Flags.Group),
+    'hi'            : CmdDef(None, None, alias="hello"),
+    'yo'            : CmdDef(None, None, alias="hello"),
 }
 
 
@@ -40,6 +47,9 @@ class ClassHandler(defs.ClassHandlerInterface):
 
     def _cmd_register(self, c_msg):
         c_msg.reply(f"You are already registered {c_msg.user.name}!")
+
+    def _cmd_hello(self, c_msg):
+        c_msg.reply(f"Hello there {c_msg.user.name}!")
 
     def _cmd_timers(self, c_msg):
         timers = sorted(self.pb.timer.callbacks,

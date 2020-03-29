@@ -18,12 +18,13 @@ class HandlerError(Exception):
 
 class _MsgContext:
     __slots__ = ["cmd_name", "sub_cmds", "handler_class",
-                 "handler_title", "location", "sport", "area"]
+                 "handler_title", "handler_name", "location", "sport", "area"]
     def __init__(self):
         self.cmd_name = None
         self.sub_cmds = []
         self.handler_class = None
         self.handler_title = None
+        self.handler_name = None
         self.location = None
         self.sport = None
         self.area = None
@@ -75,6 +76,7 @@ class Handler(object):
         if target in self._global_handler.cmd_defs:
             ctx.handler_class = self._global_handler
             ctx.handler_title = "Global"
+            ctx.handler_name = None
         else:
             # If this message is from a room, then this room is only
             # associated with a single location, so use that.
@@ -97,6 +99,7 @@ class Handler(object):
                     ctx.location = loc
                     ctx.sport = loc.sports[target]
                     ctx.handler_title = ctx.sport.name.upper()
+                    ctx.handler_name = ctx.sport.name
                     break
 
                 if target in loc.areas:
@@ -104,17 +107,22 @@ class Handler(object):
                     ctx.handler_class = self._area_handler
                     ctx.area = loc.areas[target]
                     ctx.handler_title = ctx.area.name.title()
+                    ctx.handler_name = ctx.area.name
                     break
 
             if ctx.location is None:
-                raise HandlerError(f"Unknown command '{target}'")
+                raise HandlerError(f"Unknown command '{target}'. See `help` for supported commands.")
 
-            # If this isn't help then shuffle out the sport/area name
+            # Shuffle out the sport/area
             if cmds[0] != "help":
                 # Should have at least 1 command
                 if len(cmds) < 2:
                     raise HandlerError(f"Missing {cmds[0]} command - see help {cmds[0]}")
                 ctx.cmd_name, *ctx.sub_cmds = cmds[1:]
+            else:
+                # If we have "help xxx" or "help xxx foo", then get rid of the xxx as
+                # we know help and the handler.
+                ctx.sub_cmds = cmds[2:]
 
         return ctx
 
@@ -146,10 +154,11 @@ class Handler(object):
                                and not msg.user.is_admin):
             # Use safe_string to handle any strange characters that have
             # been sent
-            msg.reply_to_user("Unknown {} command {}. Try help"
+            msg.reply_to_user("Unknown {} command {}. Try `help {}`"
                               .format("group-chat" if msg.is_group
                                       else "direct-chat",
-                                      common.safe_string(ctx.cmd_name)))
+                                      common.safe_string(ctx.cmd_name)),
+                                      ctx.handler_name)
             if cmd_def is not None and cmd_def.has_flag(Flags.Admin):
                 LOGGER.info("{} just attempted to use admin command: {}"
                             .format(str(msg.user),
@@ -282,13 +291,12 @@ class Handler(object):
         if len(ctx.sub_cmds) > 0 and ctx.handler_class == self._global_handler:
             self._handle_help_cmd(user, "global",
                                   ctx.handler_class, ctx.sub_cmds[0])
-        elif len(ctx.sub_cmds) == 1 or (
-                    len(ctx.sub_cmds) == 0 and
-                    ctx.handler_class != self._global_handler):
+        elif (len(ctx.sub_cmds) == 0 and
+              ctx.handler_class != self._global_handler):
             self._handle_help_class(user, ctx)
-        elif len(ctx.sub_cmds) > 1:
-            self._handle_help_cmd(user, ctx.sub_cmds[0],
-                                  ctx.handler_class, ctx.sub_cmds[1])
+        elif len(ctx.sub_cmds) > 0:
+            self._handle_help_cmd(user, ctx.handler_name,
+                                  ctx.handler_class, ctx.sub_cmds[0])
         else:
             self._handle_help_global(user, ctx)
 
@@ -304,8 +312,10 @@ class Handler(object):
                 areas.extend(loc.areas.values())
 
             locations = MAIN_HELP_LOCATION.format(
-                "  - " + "\n  - ".join(f"{s.name} - {s.desc} (team-size {s.team_size})" for s in sports),
-                "  - " + "\n  - ".join(f"{a.name} - {a.desc}" for a in areas))
+                "  - " + "\n  - ".join(f"{s.name} - {s.desc} _(area: {s.area}, team-size: {s.team_size})_"
+                                       for s in sports),
+                "  - " + "\n  - ".join(f"{a.name} - {a.desc} _(location: {a.location})_"
+                                       for a in areas))
 
         help = MAIN_HELP_PREAMBLE.format(locations, global_help)
         user.send_msg(help)
@@ -358,7 +368,7 @@ class Handler(object):
         help += add_cmds(Flags.Group, True)
         help += "\n```\n"
         help += ("\nType `help {}<cmd>` for more details about a command"
-                 .format("" if not ctx.sub_cmds else f"{ctx.sub_cmds[0]} "))
+                 .format(f"{ctx.handler_name} " if ctx.handler_name  else ""))
         return help
 
     def _handle_help_class(self, user, ctx):

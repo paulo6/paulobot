@@ -26,8 +26,8 @@ TAG_REGEX = r'>([A-Za-z0-9\-_ @]+)</spark-mention>'
 
 MESSAGE_SEND_ATTEMPTS = 2
 
-WELCOME_TEXT = "Welcome to PauloBot, please send 'register' if you would like to use this bot"
-REGISTERED_TEXT = "Registration success! Welcome {}!"
+WELCOME_TEXT = "Welcome to PauloBot, a bot for organising office sports games!  \nPlease send `register` if you would like to use this bot"
+REGISTERED_TEXT = "Registration success; welcome {}! Type `help` to find out what I can do."
 
 
 class Room:
@@ -251,10 +251,6 @@ class PauloBot:
                         person.displayName,
                         person.firstName)
         user.send_msg(REGISTERED_TEXT.format(user.name))
-        if user.locations:
-            user.send_msg(
-                "You have been added to the follow locations: "
-                f"{',' .join(l.name for l in user.locations)}")
 
     def _on_room_join(self, room, email):
         if email is None:
