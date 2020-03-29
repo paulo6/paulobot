@@ -4,14 +4,16 @@ import argparse
 import re
 import webexteamssdk
 import datetime
+import pytz
 import asyncio
+import sys
 
 import paulobot.webex
 import paulobot.command
 
 from paulobot.user import UserManager
 from paulobot.location import LocationManager
-from paulobot.config import Config
+from paulobot.config import Config, ConfigError
 
 __version__ = "1.0.0"
 
@@ -65,7 +67,7 @@ class SendMsgHandler(logging.Handler):
 
     def emit(self, record):
         log_entry = self.format(record)
-        for email in self._pb.notify_list:
+        for email in self._pb.config.notify_list:
             try:
                 self._pb._webex.api.messages.create(
                     toPersonEmail=email,
@@ -124,22 +126,20 @@ class Timer:
 class PauloBot:
     def __init__(self, args):
         # Initialization order:
-        #  1) Logging, so modules can log
-        #  2) Config
+        #  1) Config, as this can control logging
+        #  2) Logging, so modules can log
         #  3) Webex client, so modules can lookup stuff from webex
         #  4) Managers
-        self._setup_logging(level=args.level)
         self.config = Config()
-        self._webex = paulobot.webex.Client(self.config.data["token"],
+        self._setup_logging(level=args.level)
+        self._webex = paulobot.webex.Client(self.config.token,
                                             on_message=self._on_message,
                                             on_room_join=self._on_room_join)
         self.timer = Timer(self)
         self.user_manager = UserManager(self)
         self.loc_manager = LocationManager(self)
         self.command_handler = paulobot.command.Handler(self)
-        self.boot_time = datetime.datetime.now()
-        self.admins = set(self.config.data.get("admins", []))
-        self.notify_list = self.config.data.get("notify", [])
+        self.boot_time = datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
         self.main_loop = asyncio.get_event_loop()
 
     def run(self):
@@ -216,6 +216,16 @@ class PauloBot:
         logging.getLogger().addHandler(notify_list)
 
     def _on_message(self, message):
+        # Sometimes when we start up, webex plays us old messages.
+        # This is useful if we haven't seen them before, but is havoc
+        # if its a replay of stuff we saw just before we restarted.
+        #
+        # So to play it safe, ignore messages from before our boot
+        # time.
+        if message.created < self.boot_time:
+            LOGGER.info("Ignoring old message")
+            return
+
         text = self._get_message_text(message)
         if message.roomType == "group":
             room = Room(self,
@@ -285,3 +295,6 @@ def main(args):
         PauloBot(args).run()
     except KeyboardInterrupt:
         pass
+    except ConfigError as e:
+        print(f"Config error: {e}", file=sys.stderr)
+        sys.exit(1)

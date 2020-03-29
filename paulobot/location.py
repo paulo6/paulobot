@@ -87,7 +87,7 @@ class LocationManager:
     def __init__(self, pb):
         self._pb = pb
         self.locations = {}
-        self._load_config(pb.config.data.get("locations", []))
+        self._load_config()
 
     def get_room_location(self, room):
         locs = [l for l in self.locations.values()
@@ -110,34 +110,34 @@ class LocationManager:
             loc.areas[None] = Area(None, None, 0)
         return loc.areas[None]
 
-    def _load_config(self, c_locations):
-        for c_loc in c_locations:
-            if "room" in c_loc:
-                room = self._pb.lookup_room(c_loc["room"])
+    def _load_config(self):
+        for c_loc in self._pb.config.locations:
+            if c_loc.room:
+                room = self._pb.lookup_room(c_loc.room)
             else:
                 room = None
-            loc = Location(self._pb, c_loc["name"], room)
+            loc = Location(self._pb, c_loc.name, room)
             self.locations[loc.name] = loc
 
-            for c_area in c_loc.get("areas", []):
-                area = Area(c_area["name"],
-                            c_area.get("description", ""),
-                            c_area.get("size", 1))
+            for c_area in c_loc.areas:
+                area = Area(c_area.name,
+                            c_area.desc,
+                            c_area.size)
                 loc.areas[area.name] = area
 
-            for c_sport in c_loc.get("sports", []):
-                if "area" not in c_sport:
+            for c_sport in c_loc.sports:
+                if c_sport.area is None:
                     area = self._get_null_area(loc)
                 else:
-                    area = loc.areas[c_sport["area"]]
+                    area = loc.areas[c_sport.area]
 
                 sport = paulobot.sport.Sport(
                     self._pb,
                     loc,
-                    c_sport["name"],
-                    c_sport.get("description", ""),
+                    c_sport.name,
+                    c_sport.desc,
                     area,
-                    c_sport["team-size"])
+                    c_sport.team_size)
                 loc.sports[sport.name] = sport
 
 

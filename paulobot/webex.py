@@ -49,10 +49,11 @@ class Client(object):
                 if message.personEmail in self.my_emails:
                     LOGGER.debug("Ignoring self message")
                 else:
-                    LOGGER.info("Received %s message from %s (in '%s'): %s",
+                    LOGGER.info("Received %s message from %s (in '%s'), created %s: %s",
                                 message.roomType,
                                 message.personEmail,
                                 self.get_room_title(message.roomId),
+                                message.created,
                                 message.text)
                     if self._on_message:
                         self._on_message(message)

@@ -12,8 +12,8 @@ G_ROLL = "Game for {time} -- {players}. **ROLL**"
 G_ROLL_MATCHUP = "Game for {time} -- {team1} vs {team2} **ROLL**\n" \
     "(quality {quality:.2f}, history {history}, win % {win1:.2f}-{win2:.2f}) "
 
-PLAYER_IDLE = "{sport} game for {time} ready to roll, but you are idle. Say something in here or room in " \
-              "next {2} secs or get dropped!"
+PLAYER_IDLE = "{sport} game for {time} ready to roll, but you are idle. Say something in here or in room " \
+              "'{room}' in the next {secs} secs or get dropped!"
 
 
 

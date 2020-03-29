@@ -11,4 +11,4 @@ fi
 cd ${PAULOBOT}
 
 echo "Running PauloBot at ${PAULOBOT}"
-python3 -m paulobot "$@"
+python3.7 -m paulobot "$@"

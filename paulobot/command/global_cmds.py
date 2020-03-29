@@ -33,7 +33,7 @@ class ClassHandler(defs.ClassHandlerInterface):
 
     def _cmd_time(self, c_msg):
         last_boot = str(self.pb.boot_time).split(".")[0]
-        msg = "Current time is: {}. Last boot: {}".format(
+        msg = "Current time is: {}. Last boot: {} UTC".format(
                         datetime.datetime.now().strftime("%H:%M:%S"),
                         last_boot)
         c_msg.reply(msg)

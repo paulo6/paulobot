@@ -50,7 +50,7 @@ GAME_TRANSITIONS = [
         'conditions': ['has_players']
     },
     {
-        'trigger': Trigger.PlayerRemoved, 'source': State.NotQuorate, 'dest': State.Empty,
+        'trigger': Trigger.PlayerRemoved, 'source': '*',              'dest': State.Empty,
         'unless': ['has_players']
     },
 
@@ -142,7 +142,7 @@ class RegisterError(Exception):
 
 
 class Game:
-    def __init__(self, sport, game_manager, gtime):
+    def __init__(self, pb, sport, game_manager, gtime):
         self.sport = sport
         self.gtime = gtime
 
@@ -158,6 +158,13 @@ class Game:
         self._in_area_queue = False
         self._open_ready = False
         self._game_manager = game_manager
+        self._pb = pb
+        self._timeout_fire_time = None
+
+    def __repr__(self):
+        # pylint: disable=no-member
+        return f"<Game({self.sport.name}, {self.gtime}, {self.state})>"
+
 
     # --------------------------------------------------
     # Properties used by state machine
@@ -204,7 +211,9 @@ class Game:
 
     @property
     def idle_secs_left(self):
-        return None
+        if self._timeout_fire_time is None:
+            return None
+        return (self._timeout_fire_time - datetime.datetime.now()).seconds
 
     @property
     def pretty(self):
@@ -244,6 +253,7 @@ class Game:
     def add_player(self, player):
         if self.has_space and player not in self._players:
             self._players.append(player)
+            player.user.in_games.append(self)
             self.trigger(Trigger.PlayerAdded) # pylint: disable=no-member
 
     def remove_player(self, player):
@@ -252,7 +262,8 @@ class Game:
     def remove_players(self, players):
         for player in (p for p in players if p in self._players):
             self._players.remove(player)
-            self.trigger(Trigger.PlayerRemoved) # pylint: disable=no-member
+            player.user.in_games.remove(self)
+        self.trigger(Trigger.PlayerRemoved) # pylint: disable=no-member
 
     def add_hold(self, player, reason):
         self._hold_info = (player, reason)
@@ -262,7 +273,10 @@ class Game:
         if self._hold_info is not None:
             self._hold_info = None
             self.trigger(Trigger.HoldRemoved) # pylint: disable=no-member
-
+            
+    def player_is_ready(self, player):
+        self._not_ready_players.remove(player)
+        self.trigger(Trigger.PlayerReady) # pylint: disable=no-member
 
     # --------------------------------------------------
     # State machine callbacks - should *not* be called
@@ -288,8 +302,8 @@ class Game:
 
     def on_exit_WaitingForArea(self, event):
         # If we leave waiting for area and do not go to
-        # player check, then remove from qyeye
-        if event.transition.dest is not State.PlayerCheck:
+        # player check, then remove from queue
+        if _event_dest_is_state(event, State.PlayerCheck):
             self.sport.area.remove_from_queue(self)
 
     def on_enter_PlayerCheck(self, event):
@@ -316,19 +330,54 @@ class Game:
                 # Players are ready!
                 self.trigger(Trigger.PlayerReady) # pylint: disable=no-member
             else:
-                # @@@ Start timer
-                pass
+                self._start_timeout_timer()
 
     def on_exit_PlayerCheck(self, event):
-        # Clear not ready players set.
-        self._not_ready_players = set()
+        # Clear not ready players set if not heading to PlayersNotReady.
+        # We need the not ready player list in PlayersNotReady
+        if not _event_dest_is_state(event, State.PlayersNotReady):
+            self._not_ready_players.clear()
 
-        # Remove ourselves from the rolling list if we are not
-        # rolling.
-        if event.transition.dest is not State.Rolling:
+        # Ideally we'd just remove ourselves from the rolling list if we
+        # aren't head to rolling. However this could trigger 
+        # the Area to roll the 2nd game for this time if that game is full.
+        #
+        # This is problematic for 2 reasons, if this game is heading for
+        # PlayersNotReady:
+        # 1) We'll announce that 2nd game rolling before we have had
+        #    chance to announce this game is no longer rolling
+        # 2) If the 2nd game is waiting for players, then when we do
+        #    unreg the idle players here, it'll cancel the rolling of
+        #    the 2nd game to pull players it - ideally we want to
+        #    pull players in before we try to roll that 2nd game.
+        #
+        # So instead, let GameManager take care of removing from
+        # rolling when we head to PlayersNotReady
+        if (not _event_dest_is_state(event, State.Rolling) and
+            not _event_dest_is_state(event, State.PlayersNotReady)):
             self.sport.area.remove_from_rolling(self)
 
-        # @@@ Stop timer
+        self._stop_timeout_timer()
+
+    def on_exit_PlayersNotReady(self, event):
+        self._not_ready_players.clear()
+
+    # --------------------------------------------------
+    # Private methods
+    # --------------------------------------------------
+    def _start_timeout_timer(self):
+        self._timeout_fire_time = (datetime.datetime.now() + 
+                    datetime.timedelta(0, self._pb.config.ready_timeout))
+        self._pb.timer.schedule_at(self._timeout_fire_time,
+                                   self._timeout_timer_cb)
+
+    def _stop_timeout_timer(self):
+        if self._pb.timer.is_scheduled(self._timeout_timer_cb):
+            self._pb.timer.cancel(self._timeout_timer_cb)
+        self._timeout_fire_time = None
+
+    def _timeout_timer_cb(self):
+        self.trigger(Trigger.TimerFired) # pylint: disable=no-member
 
 
 def _reorganize_lock(fn):
@@ -356,11 +405,11 @@ class GameManager:
                                             finalize_event=self._finalize_event)
 
         self._game_state_handlers = {
-            State.Empty: self._game_state_empty,
+            State.Empty: self._event_game_state_empty,
             State.Quorate: lambda e: False, # Don't announce quorate it's a transient state
-            State.PlayerCheck: self._game_state_player_check,
-            State.PlayersNotReady: self._game_state_player_check,
-            State.Rolling: self._game_state_rolling,
+            State.PlayerCheck: self._event_game_state_player_check,
+            State.PlayersNotReady: self._event_game_state_players_not_ready,
+            State.Rolling: self._event_game_state_rolling,
         }
 
         self._games = collections.defaultdict(list)
@@ -408,7 +457,7 @@ class GameManager:
             return None
 
         # Return the first earliest game!
-        return self._games[sorted(self._games.keys())[0][0]]
+        return self._games[sorted(self._games.keys())[0]][0]
 
     def get_game_time_index(self, game):
         return self._games[game.gtime].index(game)
@@ -422,24 +471,40 @@ class GameManager:
     # Private game state handlers
     # --------------------------------------------------
     def _finalize_event(self, event):
+        # Save the rest of the code from having to do this
+        game = event.model
+
+        # First do any custom state handling before announcing
         announce_game = True
-        if event.model.state in self._game_state_handlers:
-            announce_game = self._game_state_handlers[event.model.state](event)
+        if game.state in self._game_state_handlers:
+            announce_game = self._game_state_handlers[game.state](event)
 
         # Announce the game if a handler hasn't already
         if announce_game:
-            self._announce_game(event.model)
+            self._announce_game(game)
+
+        # Now do some post announce handling
 
         # If the event was an unregister, see whether players can be shuffled!
         if event.event is Trigger.PlayerRemoved:
-            self._reorganize_games(combine_gtime=event.model.gtime)
+            self._reorganize_games(combine_gtime=game.gtime)
 
         # Check whether this is an old game that needs to be promoted to now.
-        if event.model.state is State.NotQuorate:
-            self._reorganize_games(check_old_gtime=event.model.gtime)
+        if game.state is State.NotQuorate:
+            self._reorganize_games(check_old_gtime=game.gtime)
+
+        # After we have done the announcing and re-orging, remove ourselves
+        # from area in_progress queue if we have come from
+        # PlayerCheck -> PlayerNotReady -> NotQuorate
+        #
+        # See comment in on_exit_PlayerCheck for more details about why we
+        # have to do it here
+        if (game.state in (State.NotQuorate, State.Empty) and
+            _event_source_is_state(event, State.PlayersNotReady)):
+            self._sport.area.remove_from_rolling(game)
 
 
-    def _game_state_empty(self, event):
+    def _event_game_state_empty(self, event):
         self._delete_game(event.model)
         # Don't announce deletes if this is during a reorg, as we may be
         # moving a game into its place.
@@ -447,7 +512,7 @@ class GameManager:
             self._sport.announce(f"Game for {event.model.gtime} removed!")
         return False
 
-    def _game_state_rolling(self, event):
+    def _event_game_state_rolling(self, event):
         # Announce ASAP!
         self._announce_game(event.model)
 
@@ -455,26 +520,50 @@ class GameManager:
         self._sport.area.game_rolled(event.model, None) # @@@ RESULT
         return False
 
-    def _game_state_player_check(self, event):
+    def _event_game_state_player_check(self, event):
+        # By default announce each time we hit this state
+        announce = True
+
         # First check for any players in other games
-        clashed = [p for p in event.model.not_ready_players
-                     if p.user.is_currently_rolled]
+        clashed = PlayerList(p for p in event.model.not_ready_players
+                            if p.user.is_currently_rolled)
         if clashed:
-            # @@@ Announce removals
+            self._sport.announce(
+                f"Unreg {clashed} as they are currently playing another game.")
             event.model.remove_players(clashed)
 
+            # Don't announce the game as it'll be announced when the PlayerRemoved
+            # event occurs
+            announce = False
+
         # Only message players when we enter this state
-        elif event.transition.source is not State.PlayersNotReady:
+        elif not _event_source_is_state(event, State.PlayerCheck):
+            text = template.PLAYER_IDLE.format(
+                        sport=self._sport.name,
+                        time=event.model.gtime,
+                        room=self._sport.location.room.title,
+                        secs=event.model.idle_secs_left)
             for player in event.model.not_ready_players:
-                player.user.send_msg(template.PLAYER_IDLE.format(self._sport.name,
-                                                                 event.model.gtime))
+                player.user.send_msg(text)
 
-        # If there were clashed players, then we announce we
-        # are removing people, then entering NotQuorate will do a
-        # game announcement. If there were no idle players then
-        # do not announce this transition.
-        return len(clashed) == 0 and not event.model.are_players_ready
+            # Don't announce when we enter this state if everyone
+            # is good
+            announce = not event.model.are_players_ready
 
+        return announce
+
+    def _event_game_state_players_not_ready(self, event):
+        # Remove the idle players
+        idlers = event.model.not_ready_players
+        self._sport.announce(f"Unreg {idlers} due to idleness")
+        event.model.remove_players(idlers)
+
+        # The removal of players will trigger an announce
+        return False
+
+    # --------------------------------------------------
+    # Private Utils
+    # --------------------------------------------------
     def _rearm_future_timer(self):
         if self._pb.timer.is_scheduled(self._future_timer_cb):
             self._pb.timer.cancel(self._future_timer_cb)
@@ -487,8 +576,6 @@ class GameManager:
 
     def _future_timer_cb(self):
         now = datetime.datetime.now()
-
-
 
         # Prod each old game that is waiting for the timer
         past_times = sorted(t for t in self._games.keys()
@@ -508,15 +595,11 @@ class GameManager:
         # Re-arm the timer for next future game
         self._rearm_future_timer()
 
-
-    # --------------------------------------------------
-    # Private game utilities
-    # --------------------------------------------------
     def _create_game(self, gtime):
         # Don't allow a new game in the past
         if not gtime.is_for_now and gtime < datetime.datetime.now():
             raise RegisterError("Cannot start a game in the past!")
-        game = Game(self._sport, self, gtime)
+        game = Game(self._pb, self._sport, self, gtime)
         self._machine.add_model(game)
         new_time = gtime not in self._games
         self._games[gtime].append(game)
@@ -537,6 +620,15 @@ class GameManager:
             # game the timer was armed for
             if not game.gtime.is_for_now:
                 self._rearm_future_timer()
+
+            # Remove game from linked players (if this game is being
+            # deleted with players present, e.g. roll)
+            for player in game.players:
+                player.user.in_games.remove(game)
+
+            # Make sure we definitely are not in any area queues
+            self._sport.area.remove_from_rolling(game)
+            self._sport.area.remove_from_queue(game)
 
     def _announce_game(self, game):
         self._sport.announce(game.pretty)
@@ -596,3 +688,10 @@ class GameManager:
                     games[idx].add_players(players)
                 # Move onto next game
                 idx += 1
+
+
+def _event_dest_is_state(event, state):
+    return event.transition.dest == state.name
+
+def _event_source_is_state(event, state):
+    return event.transition.source == state.name

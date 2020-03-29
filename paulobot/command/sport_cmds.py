@@ -100,7 +100,7 @@ class ClassHandler(defs.ClassHandlerInterface):
         if len(games) == 0:
             text = f"No games"
         else:
-            text = MD_LINE_SPLIT.join(self.prefix_string(c_msg, g.pretty.markdown)
+            text = MD_LINE_SPLIT.join(self.prefix_string(c_msg, g.pretty)
                                       for g in c_msg.sport.games)
 
         c_msg.reply(template.SPORT_STATUS.format(
