@@ -220,15 +220,15 @@ class Message(object):
 
         return "???"
 
-    def reply(self, msg):
+    def reply(self, text):
         """
         Send a reply to the source of the message (room or player)
 
         """
         if self.room is not None:
-            self.room.send_msg(msg)
+            self.room.send_msg(text)
         else:
-            self.reply_to_user(msg)
+            self.reply_to_user(text)
 
     def reply_to_user(self, text):
         """
