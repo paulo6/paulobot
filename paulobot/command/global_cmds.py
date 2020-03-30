@@ -55,7 +55,7 @@ class ClassHandler(defs.ClassHandlerInterface):
         timers = sorted(self.pb.timer.callbacks,
                         key=lambda t: t[0])
         if timers:
-            text = "\n".join(f"{w} -- {c}" for w, c in timers)
+            text = "\n".join(f"{w} -- {c.__self__}.{c.__name__}" for w, c in timers)
             msg.reply(f"```\n{text}\n```\n")
         else:
             msg.reply("No timers")

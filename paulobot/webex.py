@@ -4,25 +4,39 @@ import requests
 import asyncio
 import time
 import socket
+import traceback
 
 import websockets
 import uuid
 from webexteamssdk import WebexTeamsAPI
+import webexteamssdk
 import logging
 
 DEVICES_URL = 'https://wdm-a.wbx2.com/wdm/api/v1/devices'
 
-DEVICE_DATA={
-    "deviceName":"pywebsocket-client",
-    "deviceType":"DESKTOP",
-    "localizedModel":"python",
-    "model":"python",
-    "name":"python-spark-client",
-    "systemName":"python-spark-client",
-    "systemVersion":"0.1"
+DEVICE_DATA = {
+    "deviceName": "pywebsocket-client",
+    "deviceType": "DESKTOP",
+    "localizedModel": "python",
+    "model": "python",
+    "name": "python-spark-client",
+    "systemName": "python-spark-client",
+    "systemVersion": "0.1"
 }
 
 LOGGER = logging.getLogger(__name__)
+
+API_RETRIES = 2
+RETRY_DELAY = 0.5
+
+MAX_MESSAGE_LENGTH = 7439
+
+class ApiError(Exception):
+    """
+    Raised when an API fails after MAX_TRIES.
+
+    """
+    pass
 
 class Client(object):
     def __init__(self, access_token, on_message=None,
@@ -35,60 +49,109 @@ class Client(object):
         self._on_room_join = on_room_join
         self._on_room_leave = on_room_leave
         self._room_titles = {}
+        self._verb_handlers = {
+            "post": self._handle_post,
+            "add": self._handle_add,
+            "leave": self._handle_leave,
+        }
 
     def get_room_title(self, room_id):
         return self._room_titles.get(room_id, room_id)
 
+    def call_api(self, reraise, api, *args, **kwargs):
+        """
+        Helper function to call webex teams API and retry on error.
+
+        Sometimes get transient errors so use of this function should
+        help alleviate that.
+
+        If reraise is passed then an ApiError is raised if still failing
+        after max retries.
+
+        """
+        done = False
+        attempt = 1
+        while not done:
+            try:
+                done = True
+                return api(*args, **kwargs)
+            except (webexteamssdk.exceptions.ApiError,
+                    requests.exceptions.ConnectionError) as e:
+                if attempt > API_RETRIES:
+                    if reraise:
+                        LOGGER.error("Giving up on API call %s, args %s, kwargs %s"
+                                     "\n\nCallstack:\n%s\n",
+                                     api.__qualname__, args, kwargs,
+                                     "".join(traceback.format_stack()))
+                        raise ApiError(str(e)) from e
+                    LOGGER.exception()
+                else:
+                    LOGGER.error("API %s failed (%s), retrying (%s)...",
+                                 api.__qualname__, e, attempt)
+                    time.sleep(RETRY_DELAY)
+                    done = False
+                    attempt += 1
+
+    def _handle_post(self, activity):
+        message = self.call_api(True, self.api.messages.get, activity['id'])
+        if message.personEmail in self.my_emails:
+            LOGGER.debug("Ignoring self message")
+        else:
+            LOGGER.info("Received %s message from %s (in '%s'), created %s: %s",
+                        message.roomType,
+                        message.personEmail,
+                        self.get_room_title(message.roomId),
+                        message.created,
+                        message.text)
+            if self._on_message:
+                self._on_message(message)
+
+    def _handle_add(self, activity):
+        email = activity["object"]["emailAddress"]
+        room = self.call_api(True, self.api.rooms.get, activity['target']['id'])
+
+        LOGGER.info("Got ADD for %s in '%s'",
+                    email, room.title)
+        self._room_titles[room.id] = room.title
+        if self._on_room_join:
+            self._on_room_join(room,
+                               None if email in self.my_emails else email)
+
+    def _handle_leave(self, activity):
+        room = None
+        email = activity["object"]["emailAddress"]
+
+        # If we have left the room, can no longer lookup the room!
+        if email not in self.my_emails:
+            room = self.call_api(True, self.api.rooms.get, activity['target']['id'])
+
+        LOGGER.info("Got LEAVE for %s in '%s'",
+                    email,
+                    room.title if room else "<not available>")
+        if room is None:
+            self._populate_room_titles()
+        if self._on_room_leave:
+            self._on_room_leave(room,
+                                None if email in self.my_emails else email)
+
     def _process_message(self, data):
         if data['data']['eventType'] == 'conversation.activity':
             activity = data['data']['activity']
-            if activity['verb'] == 'post':
-                LOGGER.debug('activity verb is post, message id is %s', activity['id'])
-                message = self.api.messages.get(activity['id'])
-
-                if message.personEmail in self.my_emails:
-                    LOGGER.debug("Ignoring self message")
-                else:
-                    LOGGER.info("Received %s message from %s (in '%s'), created %s: %s",
-                                message.roomType,
-                                message.personEmail,
-                                self.get_room_title(message.roomId),
-                                message.created,
-                                message.text)
-                    if self._on_message:
-                        self._on_message(message)
-
-            elif activity['verb'] == 'add':
-                email = activity["object"]["emailAddress"]
-                room = self.api.rooms.get(activity['target']['id'])
-                LOGGER.info("Got ADD for %s in '%s'",
-                            email, room.title)
-                self._room_titles[room.id] = room.title
-                if self._on_room_join:
-                    self._on_room_join(room,
-                                       None if email in self.my_emails else email)
-
-            elif activity['verb'] == 'leave':
-                room = None
-                email = activity["object"]["emailAddress"]
-
-                # If we have left the room, can no longer lookup the room!
-                if email not in self.my_emails:
-                    room = self.api.rooms.get(activity['target']['id'])
-                LOGGER.info("Got LEAVE for %s in '%s'",
-                            email,
-                            room.title if room else "<not available>")
-                if room is None:
-                    self._populate_room_titles()
-                if self._on_room_leave:
-                    self._on_room_leave(room,
-                                        None if email in self.my_emails else email)
+            verb = activity['verb']
+            if verb in self._verb_handlers:
+                try:
+                    self._verb_handlers[verb](activity)
+                except Exception:
+                    LOGGER.exception("Error handling %s", verb)
 
     def _populate_room_titles(self):
-        self._room_titles = {r.id: r.title for r in self.api.rooms.list()}
+        # Room titles are best effort for logging, so don't bail
+        # if this fails.
+        rooms = self.call_api(False, self.api.rooms.list)
+        if rooms:
+            self._room_titles = {r.id: r.title for r in rooms}
 
     def _get_device_info(self):
-        LOGGER.debug('getting device list')
         device_info = None
         try:
             resp = self.api._session.get(DEVICES_URL)
@@ -133,9 +196,9 @@ class Client(object):
                         loop = asyncio.get_running_loop()
                         await loop.run_in_executor(None, self._process_message, msg)
                     except:
-                        LOGGER.exception("An exception occurred while processing message. Ignoring.")
+                        LOGGER.exception("Exception occurred while processing message...")
 
-        # Retry on error
+        # Retry on connection errors
         while True:
             try:
                 main_loop.run_until_complete(_run())

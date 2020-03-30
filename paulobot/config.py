@@ -20,8 +20,11 @@ class ConfigError(Exception):
 
 class json_field(object):
     """
-    Descriptor (non-data) for building an attribute on-demand on first use from
-    the JSON.
+    Decorator for config field.
+
+    On first access, it looksup field from JSON data, validates and then
+    replaces self with value for future lookups.
+    
     """
     
     def __init__(self, field, default=None, mandatory=False, list_cls=None):

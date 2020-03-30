@@ -27,8 +27,6 @@ LOGGING_DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
 
 TAG_REGEX = r'>([A-Za-z0-9\-_ @]+)</spark-mention>'
 
-MESSAGE_SEND_ATTEMPTS = 2
-
 WELCOME_TEXT = "Welcome to PauloBot, a bot for organising office sports games!  \nPlease send `register` if you would like to use this bot"
 REGISTERED_TEXT = "Registration success; welcome {}! Type `help` to find out what I can do."
 
@@ -132,35 +130,15 @@ class PauloBot:
         logging.info("Sending %s message to '%s'",
                      "group" if room_id else "direct",
                      self._webex.get_room_title(room_id) if room_id else user_email)
-
-        # Sometimes we get transient errors when sending, so retry until
-        # success, or if we reach max retries
-        done = False
-        attempt = 1
-        while not done:
-            try:
-                done = True
-                self._webex.api.messages.create(roomId=room_id,
-                                                toPersonEmail=user_email,
-                                                markdown=text)
-            except webexteamssdk.exceptions.ApiError as e:
-                if attempt > MESSAGE_SEND_ATTEMPTS:
-                    logging.exception("Giving up trying to send message text: %s\n\nCallstack:\n%s\n\n",
-                                      text,
-                                      "".join(traceback.format_stack()))
-                else:
-                    logging.error("Failed to send message (%s), retrying (%s)...",
-                                  e, attempt)
-                    done = False
-                    attempt += 1
+        self._webex.call_api(False,
+                             self._webex.api.messages.create,
+                             roomId=room_id,
+                             toPersonEmail=user_email,
+                             markdown=text)
 
     def lookup_room(self, room_id):
-        try:
-            room = self._webex.api.rooms.get(room_id)
-            return Room(self, room_id, room.title)
-        except webexteamssdk.exceptions.ApiError:
-            logging.exception(f"Failed to lookup room id: {room_id}")
-            return None
+        room = self._webex.api.rooms.get(room_id)
+        return Room(self, room_id, room.title)
 
     def get_room_users(self, room):
         members = self._webex.api.memberships.list(roomId=room.id)
