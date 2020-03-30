@@ -709,6 +709,20 @@ class GameManager:
                 self._sport.announce(f"Changed {len(old_games)} past game(s) for {check_old_gtime} "
                                       "into games for now")
 
+                # Check and remove duplicate players - players in these old games could also
+                # be in a game for now, so make sure they only appear in the earliest created
+                # game.
+                seen_players = set()
+                for game in self._games[GTIME_NOW]:
+                    # Get players to remove that we have in earlier games
+                    duplicates = [p for p in game.players if p in seen_players]
+
+                    # Update our seen players
+                    seen_players.update(game.players)
+
+                    # Remove the duplicates
+                    game.remove_players(duplicates)
+
                 # We've moved some games to now, see if they can be combined
                 combine_gtime = GTIME_NOW
 
