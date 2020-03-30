@@ -214,7 +214,9 @@ class Game:
     @property
     def pretty(self):
         """
-        Pretty string for use in messaging groups.
+        Pretty string for use in messaging rooms.
+        
+        Has user webex-tags but not sport tag.
 
         """
         return template.game_string(self)
@@ -223,6 +225,8 @@ class Game:
     def pretty_for_direct(self):
         """
         Pretty string for direct messages.
+
+        Has no user webex-tags, but has a sport tag prefix
 
         """
         return f"{self.sport.tag} {template.game_string(self, no_tags=True)}"
