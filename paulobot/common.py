@@ -186,8 +186,8 @@ class Message(object):
         # The CommandType
         self.cmd_type = None
 
-        # Instance of commands.defs.ParsedArgs.
-        # Can be accessed like a dictionary of cmd-name -> value
+        # Instance of commands.defs.ArgParser
+        # Can be accessed like a dictionary of arg-name -> value
         self.args = None
 
     @property
