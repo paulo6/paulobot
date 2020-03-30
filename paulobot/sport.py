@@ -15,6 +15,9 @@ class Player(paulobot.skill.Player):
     def __repr__(self):
         return f"<Player({self.sport}, {self.user})>"
 
+    def __hash__(self):
+        return hash(self.user)
+
 
 class Sport:
     """
