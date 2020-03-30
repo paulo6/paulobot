@@ -7,6 +7,7 @@ import datetime
 import pytz
 import asyncio
 import sys
+import traceback
 
 import paulobot.webex
 import paulobot.command
@@ -144,8 +145,9 @@ class PauloBot:
                                                 markdown=text)
             except webexteamssdk.exceptions.ApiError as e:
                 if attempt > MESSAGE_SEND_ATTEMPTS:
-                    logging.exception("Giving up trying to send message text: %s",
-                                      text)
+                    logging.exception("Giving up trying to send message text: %s\n\nCallstack:\n%s\n\n",
+                                      text,
+                                      "".join(traceback.format_stack()))
                 else:
                     logging.error("Failed to send message (%s), retrying (%s)...",
                                   e, attempt)

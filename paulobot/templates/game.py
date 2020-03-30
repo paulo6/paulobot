@@ -17,7 +17,7 @@ PLAYER_IDLE = "{sport} game for {time} ready to roll, but you are idle. Say some
 
 
 
-def game_string(game):
+def game_string(game, no_tags=False):
     time = str(game.gtime)
     time_index = game.time_index
     if time_index > 0:
@@ -57,6 +57,6 @@ def game_string(game):
 
     elif game.state == GameState.Rolling:
         res = G_ROLL.format(time=time,
-                            players=game.players.tagged)
+                            players=game.players if no_tags else game.players.tagged)
 
     return res

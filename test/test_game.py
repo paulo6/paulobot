@@ -82,6 +82,12 @@ class TestFSM:
         game.trigger(Trigger.PlayerAdded)
         assert game.state == State.Quorate
 
+        # Test: Empty -> Quorate (no space)
+        game.state = State.Empty
+        game.p_has_space = False
+        game.trigger(Trigger.PlayerAdded)
+        assert game.state == State.Quorate
+
     def test_event_player_remove(self, game):
         assert game.state == State.Empty
 

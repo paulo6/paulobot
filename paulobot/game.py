@@ -247,19 +247,31 @@ class Game:
     # Methods for changing game state
     # --------------------------------------------------
     def add_player(self, player):
-        if self.has_space and player not in self._players:
-            self._players.append(player)
-            player.user.in_games.append(self)
+        self.add_players((player,))
+
+    def add_players(self, players):
+        changed = False
+        for player in (p for p in players if p not in self._players):
+            if self.has_space:
+                self._players.append(player)
+                player.user.in_games.append(self)
+                changed = True
+
+        if changed:
             self.trigger(Trigger.PlayerAdded) # pylint: disable=no-member
 
     def remove_player(self, player):
         self.remove_players((player,))
 
     def remove_players(self, players):
+        changed = False
         for player in (p for p in players if p in self._players):
             self._players.remove(player)
             player.user.in_games.remove(self)
-        self.trigger(Trigger.PlayerRemoved) # pylint: disable=no-member
+            changed = True
+
+        if changed:
+            self.trigger(Trigger.PlayerRemoved) # pylint: disable=no-member
 
     def add_hold(self, player, reason):
         self._hold_info = (player, reason)
@@ -529,6 +541,10 @@ class GameManager:
     def _event_game_state_rolling(self, event):
         # Announce ASAP!
         self._announce_game(event.model)
+
+        game_text = f"{self._sport.tag} {template.game_string(event.model, True)}"
+        for player in event.model.players:
+            player.user.send_msg(game_text)
 
         self._delete_game(event.model)
         self._sport.area.game_rolled(event.model, None) # @@@ RESULT
