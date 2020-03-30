@@ -38,24 +38,24 @@ class ClassHandler(defs.ClassHandlerInterface):
     def cmd_defs(self):
         return _CMDS_GLOBAL
 
-    def _cmd_time(self, c_msg):
+    def _cmd_time(self, msg):
         last_boot = str(self.pb.boot_time).split(".")[0]
-        msg = "Current time is: {}. Last boot: {} UTC".format(
+        text = "Current time is: {}. Last boot: {} UTC".format(
                         datetime.datetime.now().strftime("%H:%M:%S"),
                         last_boot)
-        c_msg.reply(msg)
+        msg.reply(text)
 
-    def _cmd_register(self, c_msg):
-        c_msg.reply(f"You are already registered {c_msg.user.name}!")
+    def _cmd_register(self, msg):
+        msg.reply(f"You are already registered {msg.user.name}!")
 
-    def _cmd_hello(self, c_msg):
-        c_msg.reply(f"Hello there {c_msg.user.name}!")
+    def _cmd_hello(self, msg):
+        msg.reply(f"Hello there {msg.user.name}!")
 
-    def _cmd_timers(self, c_msg):
+    def _cmd_timers(self, msg):
         timers = sorted(self.pb.timer.callbacks,
                         key=lambda t: t[0])
         if timers:
-            msg = "\n".join(f"{w} -- {c}" for w, c in timers)
-            c_msg.reply(f"```\n{msg}\n```\n")
+            text = "\n".join(f"{w} -- {c}" for w, c in timers)
+            msg.reply(f"```\n{text}\n```\n")
         else:
-            c_msg.reply("No timers")
+            msg.reply("No timers")

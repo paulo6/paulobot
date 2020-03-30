@@ -15,6 +15,8 @@ from paulobot.user import UserManager
 from paulobot.location import LocationManager
 from paulobot.config import Config, ConfigError
 
+from paulobot.common import Message, Room
+
 __version__ = "1.0.0"
 
 LOGGER = logging.getLogger(__name__)
@@ -29,34 +31,6 @@ MESSAGE_SEND_ATTEMPTS = 2
 WELCOME_TEXT = "Welcome to PauloBot, a bot for organising office sports games!  \nPlease send `register` if you would like to use this bot"
 REGISTERED_TEXT = "Registration success; welcome {}! Type `help` to find out what I can do."
 
-
-class Room:
-    def __init__(self, pb, room_id, title):
-        self.id = room_id
-        self.title = title
-        self._pb = pb
-
-    def __str__(self):
-        return f"{self.id} ({self.title})"
-
-    def send_msg(self, text):
-        self._pb.send_message(text, room_id=self.id)
-
-
-class Message(object):
-    def __init__(self, user, text, room=None):
-        self.user = user
-        self.text = text
-        self.room = room
-
-    @property
-    def is_group(self):
-        return self.room is not None
-
-    def reply_to_user(self, text):
-        # Replies to the user who sent the message
-        if self.user is not None:
-            self.user.send_msg(text)
 
 
 class SendMsgHandler(logging.Handler):
@@ -215,35 +189,35 @@ class PauloBot:
         notify_list.setLevel(logging.ERROR)
         logging.getLogger().addHandler(notify_list)
 
-    def _on_message(self, message):
+    def _on_message(self, wx_msg):
         # Sometimes when we start up, webex plays us old messages.
         # This is useful if we haven't seen them before, but is havoc
         # if its a replay of stuff we saw just before we restarted.
         #
         # So to play it safe, ignore messages from before our boot
         # time.
-        if message.created < self.boot_time:
+        if wx_msg.created < self.boot_time:
             LOGGER.info("Ignoring old message")
             return
 
-        text = self._get_message_text(message)
-        if message.roomType == "group":
+        text = self._get_message_text(wx_msg)
+        if wx_msg.roomType == "group":
             room = Room(self,
-                        message.roomId,
-                        self._webex.get_room_title(message.roomId))
+                        wx_msg.roomId,
+                        self._webex.get_room_title(wx_msg.roomId))
         else:
             room = None
 
         # Lookup user
-        user = self.user_manager.lookup_user(message.personEmail)
+        user = self.user_manager.lookup_user(wx_msg.personEmail)
         if user is None and text == "register":
-            self._register_user(message.personId,
-                                message.personEmail)
+            self._register_user(wx_msg.personId,
+                                wx_msg.personEmail)
         elif user is None:
-            self.send_message(WELCOME_TEXT, user_email=message.personEmail)
+            self.send_message(WELCOME_TEXT, user_email=wx_msg.personEmail)
         else:
-            p_msg = Message(user, text, room)
-            self.command_handler.handle_message(p_msg)
+            message = Message(user, text, room)
+            self.command_handler.handle_message(message)
 
     def _register_user(self, person_id, email):
         person = self._webex.api.people.get(person_id)

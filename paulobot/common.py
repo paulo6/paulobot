@@ -1,10 +1,14 @@
 """
-Common definitions
+Common shared definitions, classes and util functions
 
 """
 import enum
 import functools
 import datetime
+
+# -----------------------------------------------------------
+# Common definitions
+# -----------------------------------------------------------
 
 # String for now time
 TIME_NOW = "now"
@@ -14,6 +18,25 @@ MINUTE_GRANULARITY = 5
 
 MD_LINE_SPLIT = "  \n"
 
+MD_RAW = "```\n{}\n```"
+
+
+# -----------------------------------------------------------
+# Common Exceptions
+# -----------------------------------------------------------
+class BadAction(Exception):
+    """
+    Exception representing a bad user action. Can be raised by
+    any module, and will be caught and its contents sent to the
+    user.
+
+    """
+    pass
+
+
+# -----------------------------------------------------------
+# Common classes
+# -----------------------------------------------------------
 class GameState(enum.Enum):
     """
     Enumeration of game states.
@@ -28,7 +51,6 @@ class GameState(enum.Enum):
     PlayerCheck     = enum.auto()
     PlayersNotReady = enum.auto()
     Rolling         = enum.auto()
-
 
 
 class PlayerList(list):
@@ -135,6 +157,104 @@ class TimeDelta:
         return str(self.val).split(".")[0]
 
 
+class CommandType(enum.Enum):
+    Global = enum.auto()
+    Area = enum.auto()
+    Sport = enum.auto()
+
+
+class Message(object):
+    """
+    Represents a message
+
+    """
+    def __init__(self, user, text, room=None):
+        self.user = user
+        self.text = text
+        self.room = room
+
+        # -------------------------------------------------
+        # Fields below are filled out by the command parser
+        # -------------------------------------------------
+        self.location = None
+        self.sport = None
+        self.area = None
+
+        # The command name
+        self.cmd = None
+
+        # The CommandType
+        self.cmd_type = None
+
+        # Instance of commands.defs.ParsedArgs.
+        # Can be accessed like a dictionary of cmd-name -> value
+        self.args = None
+
+    @property
+    def is_group(self):
+        return self.room is not None
+
+    @property
+    def cmd_type_title(self):
+        if self.cmd_type is CommandType.Global:
+            return "Global"
+
+        if self.cmd_type is CommandType.Sport:
+            return self.sport.name.upper()
+
+        if self.cmd_type is CommandType.Area:
+            return self.area.name.title()
+
+        return "Unknown"
+
+    @property
+    def cmd_type_name(self):
+        if self.cmd_type is CommandType.Global:
+            return None
+
+        if self.cmd_type is CommandType.Sport:
+            return self.sport.name
+
+        if self.cmd_type is CommandType.Area:
+            return self.area.name
+
+        return "???"
+
+    def reply(self, msg):
+        """
+        Send a reply to the source of the message (room or player)
+
+        """
+        if self.room is not None:
+            self.room.send_msg(msg)
+        else:
+            self.reply_to_user(msg)
+
+    def reply_to_user(self, text):
+        """
+        Send a reply to the user who sent the message
+
+        """
+        if self.user is not None:
+            self.user.send_msg(text)
+
+
+class Room:
+    def __init__(self, pb, room_id, title):
+        self.id = room_id
+        self.title = title
+        self._pb = pb
+
+    def __str__(self):
+        return f"{self.id} ({self.title})"
+
+    def send_msg(self, text):
+        self._pb.send_message(text, room_id=self.id)
+
+
+# -----------------------------------------------------------
+# Common util functions
+# -----------------------------------------------------------
 def ordinal(n):
     return str(n) + {1: 'st', 2: 'nd', 3: 'rd'}.get(10 <= n % 100 <= 20
                                                     and n or n % 10, 'th')

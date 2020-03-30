@@ -63,48 +63,43 @@ class BadArgValue(Exception):
 
 
 class CommandError(Exception):
-    def __init__(self, error_msg, reply_fn=None):
+    def __init__(self, error_msg, reply_to_user=False,
+                include_sorry=True):
         """
         Initialize CommandError.
 
-        If reply_fn is None, then the default msg reply function will be
-        used.
-
         """
         self.error_msg = error_msg
-        self.reply_fn = reply_fn
+        self.reply_to_user = reply_to_user
+        self.include_sorry = include_sorry
 
     def __str__(self):
         return self.error_msg
+
+    def send(self, source_msg):
+        if self.include_sorry:
+            spacer = "." if self.error_msg[0].isupper() else ","
+            text = f"Sorry {source_msg.user.name}{spacer} {self.error_msg}"
+        else:
+            text = self.error_msg
+        if self.reply_to_user:
+            source_msg.reply_to_user(text)
+        else:
+            source_msg.reply(text)
+
 
 
 class ParseError(Exception):
     pass
 
 
-def catch_user_errors(fn):
-    """
-    Decorator for catching errors caused by the user doing
-    something wrong, and converting to CommandErrors.
-
-    """
-    @functools.wraps(fn)
-    def wrapper(*args, **kwargs):
-        try:
-            fn(*args, **kwargs)
-        except paulobot.game.RegisterError as e:
-            raise CommandError(str(e))
-
-    return wrapper
-
-
 # Command definition class
 class CmdDef(object):
     def __init__(self, desc, flags, alias=None, args=None,
-                 muc_desc=None, muc_args=None):
+                 grp_desc=None, grp_args=None):
         self.flags = flags
         self.desc = desc
-        self.muc_desc = muc_desc
+        self.grp_desc = grp_desc
         self.alias = alias
         # If this is an alias then stop now
         if alias is not None:
@@ -112,18 +107,18 @@ class CmdDef(object):
 
         if self.has_flag(Flags.Admin):
             self.desc = "[ADMIN] {}".format(self.desc)
-            if self.muc_desc is not None:
-                self.muc_desc = "[ADMIN] {}".format(self.muc_desc)
+            if self.grp_desc is not None:
+                self.grp_desc = "[ADMIN] {}".format(self.grp_desc)
 
         if args is None:
             self.args_def = None
         else:
             self.args_def = [ArgDef(a) for a in args]
 
-        if muc_args is None:
-            self.muc_args_def = None
+        if grp_args is None:
+            self.grp_args_def = None
         else:
-            self.muc_args_def = [ArgDef(a) for a in muc_args]
+            self.grp_args_def = [ArgDef(a) for a in grp_args]
 
     def has_flag(self, flag):
         if self.flags is None:
@@ -139,15 +134,15 @@ class CmdDef(object):
             return " ".join(str(a) for a in self.args_def)
 
     @property
-    def muc_args_str(self):
-        if self.muc_args_def is None:
+    def grp_args_str(self):
+        if self.grp_args_def is None:
             return None
         else:
-            return " ".join(str(a) for a in self.muc_args_def)
+            return " ".join(str(a) for a in self.grp_args_def)
 
-    def get_args_def(self, is_muc=False):
-        if is_muc and self.muc_args_def is not None:
-            return self.muc_args_def
+    def get_args_def(self, is_group=False):
+        if is_group and self.grp_args_def is not None:
+            return self.grp_args_def
         else:
             return self.args_def
 
@@ -337,21 +332,22 @@ ChoiceVal = collections.namedtuple("ChoiceVal", ["value", "name"])
 
 
 class ArgParser(collections.abc.MutableMapping):
-    def __init__(self, cmd_def, values, is_muc, team_size=None):
+    def __init__(self, cmd_def, values, is_group, sport=None):
         # Dictionary of choice name to the matched arg name
         self.choice_name = {}
 
         # Select correct args def
-        if is_muc and cmd_def.muc_args_def is not None:
-            self._args_def = cmd_def.muc_args_def
-            self._args_str = cmd_def.muc_args_str
+        if is_group and cmd_def.grp_args_def is not None:
+            self._args_def = cmd_def.grp_args_def
+            self._args_str = cmd_def.grp_args_str
         else:
             self._args_def = cmd_def.args_def
             self._args_str = cmd_def.args_str
 
+        self._cmd_def = cmd_def
         self._curr_idx = 0
         self._args = {}
-        self._team_size = team_size
+        self._team_size = None if sport is None else sport.team_size
 
         if self._args_def is None:
             self._args_def = []
@@ -382,8 +378,7 @@ class ArgParser(collections.abc.MutableMapping):
                    (not a.has_flag(arg_def.FLAG_CONDITIONALLY_OPTIONAL) or
                     values_given)]
             if (len(values) == 0 and len(mand_defs) > 0):
-                raise CommandError("You forgot the {} arg. Arguments: {}"
-                                   .format(mand_defs[0].name, self._args_str))
+                raise CommandError(f"You forgot the {mand_defs[0].name} arg. Arguments: {self._args_str}")
             elif len(values) == 0:
                 # Done
                 break
@@ -404,7 +399,7 @@ class ArgParser(collections.abc.MutableMapping):
 
         # Check all commands processed
         if len(values) > 0:
-            raise CommandError("Unexpected argument: {}".format(values[0]))
+            raise CommandError(f"Unexpected argument: {values[0]}")
 
     #
     # MutableMapping methods
@@ -426,6 +421,20 @@ class ArgParser(collections.abc.MutableMapping):
 
     def keys(self):
         return self._args.keys()
+
+    def is_arg_optional(self, arg_name, is_group):
+        if (is_group and
+            self._cmd_def.grp_args_def is not None):
+            search_defs = self._cmd_def.grp_args_def
+        else:
+            search_defs = self._cmd_def.args_def
+        # First find the arg_def
+        for arg_def in search_defs:
+            if arg_name == arg_def.name:
+                return arg_def.has_flag(arg_def.FLAG_OPTIONAL)
+
+        # Invalid arg name!
+        raise Exception("Invalid arg name: {}".format(arg_name))
 
 
     #
@@ -668,79 +677,6 @@ class ArgParser(collections.abc.MutableMapping):
                 for v in values[:team_size]], team_size
 
 
-class CMessage(object):
-    """
-    Class that wraps a received message for use in command modules,
-    containing useful information to be used by the handlers.
-
-    """
-    def __init__(self, user, cmd_def, room=None,
-                 location=None, sport=None, area=None,
-                 user_reply_override=None, reply_override=None):
-        self.user = user
-        self.room = room
-        self.location = location
-        self.sport = sport
-        self.area = area
-
-        # Dictionary of argument name to argument value, parsed from the
-        # command string using the argument definitions for this command.
-        #
-        # Populated when parse_args called
-        self.args = None
-
-        self._cmd_def = cmd_def
-        self._user_reply_override = user_reply_override
-        self._reply_override = reply_override
-
-    def parse_args(self, arg_list):
-        team_size = None if self.sport is None else self.sport.team_size
-        try:
-            self.args = ArgParser(self._cmd_def, arg_list,
-                                  is_muc=self.room is not None,
-                                  team_size=team_size)
-
-        # Convert to CommandError
-        except BadArgValue as e:
-            raise CommandError(e)
-
-    def is_arg_optional(self, arg_name):
-        if (self.room is not None and
-            self._cmd_def.muc_args_def is not None):
-            search_defs = self._cmd_def.muc_args_def
-        else:
-            search_defs = self._cmd_def.args_def
-        # First find the arg_def
-        for arg_def in search_defs:
-            if arg_name == arg_def.name:
-                return arg_def.has_flag(arg_def.FLAG_OPTIONAL)
-
-        # Invalid arg name!
-        raise Exception("Invalid arg name: {}".format(arg_name))
-
-    def reply(self, msg):
-        """
-        Send a reply to the source of the message (room or player)
-
-        """
-        if self._reply_override is not None:
-            self._reply_override(msg)
-        elif self.room is not None:
-            self.room.send_msg(msg)
-        else:
-            self.user_reply(msg)
-
-    def user_reply(self, msg):
-        """
-        Reply to a user directly (even if message from a room)
-
-        """
-        if self._user_reply_override is not None:
-            self._user_reply_override(msg)
-        else:
-            self.user.send_msg(msg)
-
-
 class ClassHandlerInterface(object):
     """
     Class that defines the handler for a class of commands
@@ -757,9 +693,9 @@ class ClassHandlerInterface(object):
     def help_info(self):
         return None
 
-    def handle_command(self, cmd_name, c_msg):
+    def handle_command(self, cmd_name, msg):
         # Get the function and process it
-        self.get_cmd_func(cmd_name)(c_msg)
+        self.get_cmd_func(cmd_name)(msg)
 
     #
     # Shared utils

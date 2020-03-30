@@ -8,7 +8,7 @@ import logging
 
 import paulobot.templates.game as template
 from paulobot.common import GameState as State
-from paulobot.common import PlayerList, GTime
+from paulobot.common import PlayerList, GTime, BadAction
 
 
 class Trigger:
@@ -134,10 +134,6 @@ class StateException(Exception):
     Exception raised when a bad state transition happens.
 
     """
-    pass
-
-
-class RegisterError(Exception):
     pass
 
 
@@ -427,7 +423,7 @@ class GameManager:
         # time.
         if any(g for g in self._games.get(gtime, [])
                if player in g.players):
-            raise RegisterError(
+            raise BadAction(
                 f"You are already registered for a game for {gtime}")
 
         # Check to see whether there is a game with space at this
@@ -442,31 +438,31 @@ class GameManager:
 
     def unregister(self, gtime, player):
         if gtime not in self._games:
-            raise RegisterError(f"There are no games for {gtime}")
+            raise BadAction(f"There are no games for {gtime}")
 
         try:
             game = next(g for g in self._games[gtime]
                         if player in g.players)
         except StopIteration:
-            raise RegisterError(f"You are not registered for a game for {gtime}")
+            raise BadAction(f"You are not registered for a game for {gtime}")
 
         game.remove_player(player)
 
     def set_ready_mark(self, gtime, player, mark):
         if self._sport.team_size != 0:
-            raise RegisterError(f"Cannot use ready for this sport")
+            raise BadAction(f"Cannot use ready for this sport")
 
         # Find the game
         if gtime not in self._games:
-            raise RegisterError(f"No game for {gtime}")
+            raise BadAction(f"No game for {gtime}")
 
         games = [g for g in self._games[gtime] if player in g.players]
         if not games:
-            raise RegisterError(f"You are not present in game for {gtime}")
+            raise BadAction(f"You are not present in game for {gtime}")
 
         game = games[0]
         if len(game.players) < 2 and mark:
-            raise RegisterError(f"Need at least 2 players")
+            raise BadAction(f"Need at least 2 players")
 
         game.open_ready = mark
 
@@ -616,7 +612,7 @@ class GameManager:
     def _create_game(self, gtime):
         # Don't allow a new game in the past
         if not gtime.is_for_now and gtime < datetime.datetime.now():
-            raise RegisterError("Cannot start a game in the past!")
+            raise BadAction("Cannot start a game in the past!")
         game = Game(self._pb, self._sport, self, gtime)
         self._machine.add_model(game)
         new_time = gtime not in self._games

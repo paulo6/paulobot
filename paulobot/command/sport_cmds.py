@@ -6,7 +6,7 @@ import datetime
 from .. import common
 
 from . import defs
-from .defs import (CommandError, Flags, CmdDef, catch_user_errors)
+from .defs import CommandError, Flags, CmdDef
 
 from paulobot.common import MD_LINE_SPLIT
 import paulobot.templates.commands as template
@@ -49,18 +49,18 @@ class ClassHandler(defs.ClassHandlerInterface):
     def cmd_defs(self):
         return _CMDS_GLOBAL
 
-    def get_gtime(self, c_msg, arg_name="time",
+    def get_gtime(self, msg, arg_name="time",
                   default=common.TIME_NOW):
         # If this is an optional arg, then use get, else read it
-        if c_msg.is_arg_optional(arg_name):
-            time = c_msg.args.get(arg_name, default)
+        if msg.args.is_arg_optional(arg_name, msg.is_group):
+            time = msg.args.get(arg_name, default)
         else:
-            time = c_msg.args[arg_name]
+            time = msg.args[arg_name]
 
         if time == common.TIME_NOW:
             gtime = common.GTime(None)
         elif time == defs.TIME_NEXT:
-            game = c_msg.sport.get_next_game()
+            game = msg.sport.get_next_game()
             if not game:
                 raise CommandError("There is no next game")
             gtime = game.gtime
@@ -69,71 +69,66 @@ class ClassHandler(defs.ClassHandlerInterface):
 
         return gtime
 
-    def prefix_string(self, c_msg, text):
-        return f"[{c_msg.sport.name.upper()}] {text}"
+    def prefix_string(self, msg, text):
+        return f"[{msg.sport.name.upper()}] {text}"
 
-    @catch_user_errors
-    def _cmd_reg(self, c_msg):
-        gtime = self.get_gtime(c_msg)
-
-        # Make sure this player isn't marked as idle, just in case the
-        # player is idle now and is the 4th player regging (and so it
-        # would announce they are idle and then immediately say they are
-        # no longer idle)
-        c_msg.user.update_last_msg(update_idle_games=False)
-        c_msg.sport.game_register(c_msg.user, gtime)
-        if not c_msg.room and c_msg.location.room:
-            c_msg.reply(f"Registered for game for {gtime} in '{c_msg.location.room.title}'")
-        elif not c_msg.room:
-            c_msg.reply(f"Registered for game for {gtime}")
-
-    @catch_user_errors
-    def _cmd_unreg(self, c_msg):
-        gtime = self.get_gtime(c_msg)
-        c_msg.sport.game_unregister(c_msg.user, gtime)
-        if not c_msg.room and c_msg.location.room:
-            c_msg.reply(f"Unregistered for game for {gtime} in '{c_msg.location.room.title}'")
-        elif not c_msg.room:
-            c_msg.reply(f"Unregistered for game for {gtime}")
-
-    @catch_user_errors
-    def _cmd_ready(self, c_msg):
-        gtime = self.get_gtime(c_msg)
+    def _cmd_reg(self, msg):
+        gtime = self.get_gtime(msg)
 
         # Make sure this player isn't marked as idle, just in case the
         # player is idle now and is the 4th player regging (and so it
         # would announce they are idle and then immediately say they are
         # no longer idle)
-        c_msg.user.update_last_msg(update_idle_games=False)
-        c_msg.sport.game_set_ready_mark(c_msg.user, gtime, True)
-        if not c_msg.room and c_msg.location.room:
-            c_msg.reply(f"Game for {gtime} marked as ready '{c_msg.location.room.title}'")
-        elif not c_msg.room:
-            c_msg.reply(f"Game for {gtime} marked as ready")
+        msg.user.update_last_msg(update_idle_games=False)
+        msg.sport.game_register(msg.user, gtime)
+        if not msg.room and msg.location.room:
+            msg.reply(f"Registered for game for {gtime} in '{msg.location.room.title}'")
+        elif not msg.room:
+            msg.reply(f"Registered for game for {gtime}")
 
-    @catch_user_errors
-    def _cmd_unready(self, c_msg):
-        gtime = self.get_gtime(c_msg)
-        c_msg.sport.game_set_ready_mark(c_msg.user, gtime, False)
-        if not c_msg.room and c_msg.location.room:
-            c_msg.reply(f"Game for {gtime} marked as unready '{c_msg.location.room.title}'")
-        elif not c_msg.room:
-            c_msg.reply(f"Game for {gtime} marked as unready")
+    def _cmd_unreg(self, msg):
+        gtime = self.get_gtime(msg)
+        msg.sport.game_unregister(msg.user, gtime)
+        if not msg.room and msg.location.room:
+            msg.reply(f"Unregistered for game for {gtime} in '{msg.location.room.title}'")
+        elif not msg.room:
+            msg.reply(f"Unregistered for game for {gtime}")
 
-    @catch_user_errors
-    def _cmd_status(self, c_msg):
-        games = c_msg.sport.games
+    def _cmd_ready(self, msg):
+        gtime = self.get_gtime(msg)
+
+        # Make sure this player isn't marked as idle, just in case the
+        # player is idle now and is the 4th player regging (and so it
+        # would announce they are idle and then immediately say they are
+        # no longer idle)
+        msg.user.update_last_msg(update_idle_games=False)
+        msg.sport.game_set_ready_mark(msg.user, gtime, True)
+        if not msg.room and msg.location.room:
+            msg.reply(f"Game for {gtime} marked as ready '{msg.location.room.title}'")
+        elif not msg.room:
+            msg.reply(f"Game for {gtime} marked as ready")
+
+    def _cmd_unready(self, msg):
+        gtime = self.get_gtime(msg)
+        msg.sport.game_set_ready_mark(msg.user, gtime, False)
+        if not msg.room and msg.location.room:
+            msg.reply(f"Game for {gtime} marked as unready '{msg.location.room.title}'")
+        elif not msg.room:
+            msg.reply(f"Game for {gtime} marked as unready")
+
+    def _cmd_status(self, msg):
+        games = msg.sport.games
 
         if len(games) == 0:
             text = f"No games"
         else:
-            text = MD_LINE_SPLIT.join(self.prefix_string(c_msg, g.pretty)
-                                      for g in c_msg.sport.games)
+            text = MD_LINE_SPLIT.join(self.prefix_string(msg, g.pretty)
+                                      for g in msg.sport.games)
 
-        c_msg.reply(template.SPORT_STATUS.format(
-            sport=c_msg.sport.name.upper(),
+        msg.reply(template.SPORT_STATUS.format(
+            sport=msg.sport.name.upper(),
             games=text,
-            area=f"{c_msg.sport.area.name.title()} free",
+            area=f"{msg.sport.area.name.title()} free",
             pending=f"None",
         ))
 

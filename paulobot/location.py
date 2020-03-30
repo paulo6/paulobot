@@ -24,6 +24,10 @@ class Area:
     def __str__(self):
         return self.name
 
+    @property
+    def tag(self):
+        return f"<{self.name.upper()}>"
+
     def is_busy(self, game=None):
         # If there's a hold then it's busy!
         if self._manual_busy is not None:
@@ -67,6 +71,14 @@ class Area:
         if game in self._rolling:
             self._rolling.remove(game)
         self._in_progress.append(result)
+
+    def announce(self, message):
+        """
+        Announce a message in the room associated with this area.
+        
+        """
+        if self.location.room:
+            self.location.room.send_msg(f"{self.tag} {message}")
 
 
 class Location:
