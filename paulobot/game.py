@@ -213,7 +213,19 @@ class Game:
 
     @property
     def pretty(self):
+        """
+        Pretty string for use in messaging groups.
+
+        """
         return template.game_string(self)
+
+    @property
+    def pretty_for_direct(self):
+        """
+        Pretty string for direct messages.
+
+        """
+        return f"{self.sport.tag} {template.game_string(self, no_tags=True)}"
 
     @property
     def held_by(self):
@@ -542,7 +554,7 @@ class GameManager:
         # Announce ASAP!
         self._announce_game(event.model)
 
-        game_text = f"{self._sport.tag} {template.game_string(event.model, True)}"
+        game_text = event.model.pretty_for_direct
         for player in event.model.players:
             player.user.send_msg(game_text)
 
