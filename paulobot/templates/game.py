@@ -21,7 +21,10 @@ def game_string(game, no_tags=False):
     time = str(game.gtime)
     time_index = game.time_index
     if time_index > 0:
-        time += f" ({time_index + 1})"
+        time += f" <{time_index + 1}>"
+    now = datetime.datetime.now()
+    if game.created_time.date() != now.date():
+        time += ' (created {})'.format(str(game.created_time).split(".")[0])
 
     res = f"Game for {game.gtime} state is {game.state}"
     if game.state == GameState.NotQuorate:
@@ -36,7 +39,7 @@ def game_string(game, no_tags=False):
     elif game.state == GameState.WaitingForTime:
         res = G_WAITING_FOR_TIME.format(time=time,
                                         players=game.players,
-                                        future=TimeDelta(game.gtime, datetime.datetime.now()))
+                                        future=TimeDelta(game.gtime, now))
 
     elif game.state == GameState.WaitingForArea:
         res = G_WAITING_FOR_AREA.format(time=time,
