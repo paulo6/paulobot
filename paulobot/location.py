@@ -179,7 +179,9 @@ class LocationManager:
                     c_sport.name,
                     c_sport.desc,
                     area,
-                    c_sport.team_size)
+                    team_size=c_sport.team_size,
+                    team_count=c_sport.team_count,
+                    is_flexible=c_sport.is_flexible)
                 loc.sports[sport.name] = sport
 
 

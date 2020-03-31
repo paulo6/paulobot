@@ -3,7 +3,8 @@ import datetime
 from paulobot.common import GameState, TimeDelta
 
 G_NOT_QUORATE_SPACES = "Game for {time} -- {players} +{spaces}"
-G_NOT_QUORATE_OPEN = "Game for {time} -- {players} +any (until 'ready' issued)"
+G_NOT_QUORATE_FLEXI = "Game for {time} -- {players} +any (until 'ready' issued)"
+G_NOT_QUORATE_FLEXI_SPACES = "Game for {time} -- {players} +{spaces} (or 'ready' issued)"
 G_WAITING_FOR_TIME = "Game for {time} -- {players}. Starting in {future}"
 G_WAITING_FOR_AREA = "Game for {time} -- {players}. Waiting until area is free -- queue position {place}/{length}"
 G_WAITING_FOR_UNHOLD = "Game for {time} -- {players}. Waiting for unhold place by {holder}"
@@ -29,8 +30,12 @@ def game_string(game, no_tags=False):
     res = f"Game for {game.gtime} state is {game.state}"
     if game.state == GameState.NotQuorate:
         if game.sport.max_players == 0:
-            res = G_NOT_QUORATE_OPEN.format(time=time,
-                                            players=game.players)
+            res = G_NOT_QUORATE_FLEXI.format(time=time,
+                                             players=game.players)
+        elif game.sport.is_flexible:
+            res = G_NOT_QUORATE_FLEXI_SPACES.format(time=time,
+                                              players=game.players,
+                                              spaces=game.spaces_left)
         else:
             res = G_NOT_QUORATE_SPACES.format(time=time,
                                               players=game.players,

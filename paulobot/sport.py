@@ -24,8 +24,9 @@ class Sport:
     Represents an office sport.
 
     """
-    def __init__(self, pb, location, name, desc, area, team_size,
-                has_scores=True, allow_draws=False):
+    def __init__(self, pb, location, name, desc, area,
+                 team_size, team_count, is_flexible=False,
+                 has_scores=True, allow_draws=False):
         """
         Initialize the office sport.
 
@@ -42,6 +43,10 @@ class Sport:
 
             team_size: How many players are in a team
 
+            team_count: Number of team (currently only 1 or 2)
+
+            is_flexible: flexible number of players?
+
             has_scores: Is this a mode where scores are to be
             recorded
 
@@ -52,6 +57,8 @@ class Sport:
         self.name = name
         self.desc = desc
         self.team_size = team_size
+        self.team_count = team_count
+        self.is_flexible = is_flexible or team_size == 0
         self.has_scores = has_scores
         self.area = area
         # Players keyed by User object
@@ -68,11 +75,7 @@ class Sport:
         The maximum number of players in a game.
 
         """
-        return self.team_size * 2
-
-    @property
-    def is_open_mode(self):
-        return self.max_players == 0
+        return self.team_size * self.team_count
 
     @property
     def games(self):

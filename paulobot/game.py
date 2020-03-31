@@ -163,7 +163,7 @@ class Game:
         self._max_players = sport.max_players
         self._hold_info = None
         self._in_area_queue = False
-        self._open_ready = False
+        self._flexible_ready = False
         self._game_manager = game_manager
         self._pb = pb
         self._timeout_fire_time = None
@@ -178,7 +178,8 @@ class Game:
     # --------------------------------------------------
     @property
     def has_space(self):
-        return (self.sport.is_open_mode and not self.open_ready) or len(self._players) < self._max_players
+        return (not self.flexible_ready and
+                (self._max_players == 0 or len(self._players) < self._max_players))
 
     @property
     def has_players(self):
@@ -206,7 +207,8 @@ class Game:
     # --------------------------------------------------
     @property
     def spaces_left(self):
-        return 0 if self.sport.is_open_mode else self._max_players - len(self._players)
+        return (0 if (self.sport.max_players == 0 or self.flexible_ready)
+                  else self._max_players - len(self._players))
 
     @property
     def players(self):
@@ -247,18 +249,18 @@ class Game:
         return self._hold_info[0] if self._hold_info else None
 
     @property
-    def open_ready(self):
-        return self._open_ready
+    def flexible_ready(self):
+        return self._flexible_ready
 
-    @open_ready.setter
-    def open_ready(self, val):
-        if not self.sport.is_open_mode:
-            raise Exception("Cannot set open_ready for a non-open game")
-        if val and not self._open_ready:
-            self._open_ready = True
+    @flexible_ready.setter
+    def flexible_ready(self, val):
+        if not self.sport.is_flexible:
+            raise Exception("Cannot set flexible_ready for a non-flexible game")
+        if val and not self._flexible_ready:
+            self._flexible_ready = True
             self.trigger(Trigger.PlayerAdded) # pylint: disable=no-member
-        if not val and self._open_ready:
-            self._open_ready = False
+        if not val and self._flexible_ready:
+            self._flexible_ready = False
             self.trigger(Trigger.PlayerRemoved) # pylint: disable=no-member
 
     @property
@@ -276,9 +278,9 @@ class Game:
     def add_player(self, player):
         self.add_players((player,))
 
-    def add_players(self, players, set_open_ready=False):
-        if set_open_ready and not self.sport.is_open_mode:
-            raise Exception("Cannot set open_ready for a non-open game")
+    def add_players(self, players, flexible_ready=False):
+        if flexible_ready and not self.sport.is_open_mode:
+            raise Exception("Cannot set flexible_ready for a non-open game")
         changed = False
         for player in (p for p in players if p not in self._players):
             if self.has_space:
@@ -287,7 +289,7 @@ class Game:
                 changed = True
 
         if changed:
-            self._open_ready = set_open_ready
+            self._flexible_ready = flexible_ready
             self.trigger(Trigger.PlayerAdded) # pylint: disable=no-member
 
     def remove_player(self, player):
@@ -322,7 +324,7 @@ class Game:
     # --------------------------------------------------
     def on_enter_NotQuorate(self, event):
         # Whenever we enter NotQuorate, reset open ready and quorate time
-        self._open_ready = False
+        self._flexible_ready = False
         self.quorate_time = None
 
     def on_enter_Quorate(self, event):
@@ -493,7 +495,7 @@ class GameManager:
         game.remove_player(player)
 
     def set_ready_mark(self, gtime, player, mark):
-        if self._sport.team_size != 0:
+        if not self._sport.is_flexible:
             raise BadAction(f"Cannot use ready for this sport")
 
         # Find the game
@@ -508,7 +510,7 @@ class GameManager:
         if len(game.players) < 2 and mark:
             raise BadAction(f"Need at least 2 players")
 
-        game.open_ready = mark
+        game.flexible_ready = mark
 
     def get_next_game(self):
         if not self._games:
@@ -534,7 +536,7 @@ class GameManager:
             game.db_id = rec.id
             game.add_players((self._sport.players[self._pb.user_manager.lookup_user(e)]
                              for e in rec['data']['players']),
-                             set_open_ready=rec['data'].get('open_ready', False))
+                             flexible_ready=rec['data'].get('flexible_ready', False))
         finally:
             self._restore_in_progress = False
 
@@ -658,7 +660,7 @@ class GameManager:
             'quorate_time': game.quorate_time,
             'data': {
                 'players': [p.user.email for p in game.players],
-                'open_ready': game.open_ready,
+                'flexible_ready': game.flexible_ready,
             }
         }
         if game.db_id is None:
@@ -692,7 +694,7 @@ class GameManager:
             # set ready mark
             if (self._sport.is_open_mode and
                 len(game.players) > 1):
-                game.open_ready = True
+                game.flexible_ready = True
             game.trigger(Trigger.TimerFired)
 
         # See whether there are any non quorate games that

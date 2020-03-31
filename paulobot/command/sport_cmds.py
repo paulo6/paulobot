@@ -27,11 +27,11 @@ _CMDS_GLOBAL = {
                            Flags.Direct | Flags.Group),
     'ready'       : CmdDef('Indicate an open game is ready to roll (no team '
                            'limit game)',
-                           Flags.Direct | Flags.Group | Flags.Open,
+                           Flags.Direct | Flags.Group | Flags.Flexi,
                            args=[_TIME_ARG + " Ready game at this "
                                  "specific time [default 'now']"]),
     'unready'     : CmdDef('Undo a "ready" (no team limit game)',
-                           Flags.Direct | Flags.Group | Flags.Open,
+                           Flags.Direct | Flags.Group | Flags.Flexi,
                            args=[_TIME_ARG + " Unready game at this specific "
                                  "time [default 'now']"]),
 }

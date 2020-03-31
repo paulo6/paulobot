@@ -189,7 +189,7 @@ class Handler(object):
                                "sports without scoring support",
                                reply_to_user=True)
 
-        if cmd_def.has_flag(Flags.Open) and (not msg.sport or msg.sport.team_size != 0):
+        if cmd_def.has_flag(Flags.Flexi) and (not msg.sport or not msg.sport.is_flexible):
             raise CommandError("this command is not supported for sports with "
                                "fixed teams",
                                reply_to_user=True)
@@ -277,8 +277,21 @@ class Handler(object):
                 sports.extend(loc.sports.values())
                 areas.extend(loc.areas.values())
 
+            def sport_str(s):
+                info = [f"area: {s.area}"]
+                if s.is_flexible:
+                    info.append(f"min-players: 2")
+                if s.team_count == 1 and s.team_size == 0:
+                    info.append(f"max-players: any")
+                elif s.team_count == 1 and s.team_size > 0:
+                    info.append(f"max-players: {s.team_size}")
+                else:
+                    info += [f"team-size: {s.team_size}",
+                             f"team-count: {s.team_count}"]
+                return (f"{s.name} - {s.desc} _({', '.join(info)})_")
+
             locations = MAIN_HELP_LOCATION.format(
-                "  - " + "\n  - ".join(f"{s.name} - {s.desc} _(area: {s.area}, team-size: {s.team_size})_"
+                "  - " + "\n  - ".join(sport_str(s)
                                        for s in sports),
                 "  - " + "\n  - ".join(f"{a.name} - {a.desc} _(location: {a.location})_"
                                        for a in areas))
@@ -309,7 +322,7 @@ class Handler(object):
                     not msg.sport or not msg.sport.has_scores):
                     continue
 
-                if cmd_def.has_flag(Flags.Open) and (
+                if cmd_def.has_flag(Flags.Flexi) and (
                     not msg.sport or msg.sport.team_size != 0):
                     continue
 
@@ -438,10 +451,10 @@ class Handler(object):
                         if not cmd_def.has_flag(Flags.Score))
 
         # Filter out non-open ones
-        if not msg.sport or msg.sport.team_size != 0:
+        if not msg.sport or not msg.sport.is_flexible:
             cmds = ((cmd, cmd_def)
                         for cmd, cmd_def in cmds
-                        if not cmd_def.has_flag(Flags.Open))
+                        if not cmd_def.has_flag(Flags.Flexi))
 
         # Filter out hidden ones
         cmds = ((cmd, cmd_def)
