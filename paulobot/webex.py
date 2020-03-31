@@ -33,7 +33,7 @@ MAX_MESSAGE_LENGTH = 7439
 
 class ApiError(Exception):
     """
-    Raised when an API fails after MAX_TRIES.
+    Raised when an API fails after API_RETRIES.
 
     """
     pass

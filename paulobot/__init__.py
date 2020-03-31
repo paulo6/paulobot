@@ -15,6 +15,7 @@ import paulobot.command
 from paulobot.user import UserManager
 from paulobot.location import LocationManager
 from paulobot.config import Config, ConfigError
+from paulobot.database import Database
 
 from paulobot.common import Message, Room
 
@@ -102,18 +103,24 @@ class PauloBot:
         #  1) Config, as this can control logging
         #  2) Logging, so modules can log
         #  3) Webex client, so modules can lookup stuff from webex
-        #  4) Managers
+        #  4) Database
+        #  5) Managers
         self.config = Config()
+        self.main_loop = asyncio.get_event_loop()
+
         self._setup_logging(level=args.level)
         self._webex = paulobot.webex.Client(self.config.token,
                                             on_message=self._on_message,
                                             on_room_join=self._on_room_join)
         self.timer = Timer(self)
+        self.database = Database(os.path.expanduser(self.config.database))
         self.user_manager = UserManager(self)
         self.loc_manager = LocationManager(self)
         self.command_handler = paulobot.command.Handler(self)
         self.boot_time = datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
-        self.main_loop = asyncio.get_event_loop()
+
+        # Restore Databases
+        self.user_manager.restore_from_db()
 
     def run(self):
         self._webex.run(self.main_loop)

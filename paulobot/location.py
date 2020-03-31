@@ -75,7 +75,7 @@ class Area:
     def announce(self, message):
         """
         Announce a message in the room associated with this area.
-        
+
         """
         if self.location.room:
             self.location.room.send_msg(f"{self.tag} {message}")
@@ -115,13 +115,18 @@ class LocationManager:
             return locs[0]
         return None
 
-    def add_user_to_locations(self, user):
+    def add_user_to_locations(self, user, loc_names=None):
         # Check to see whether this user is already in rooms associated with
         # locations
-        for loc in (l for l in self.locations.values() if l.room):
-            users = self._pb.get_room_users(loc.room)
-            if user in users:
-                loc.add_user(user)
+        if loc_names is None:
+            for loc in (l for l in self.locations.values() if l.room):
+                users = self._pb.get_room_users(loc.room)
+                if user in users:
+                    loc.add_user(user)
+        else:
+            for loc in (self.locations[l] for l in loc_names):
+                if user not in loc.users:
+                    loc.add_user(user)
 
 
     def _get_null_area(self, loc):

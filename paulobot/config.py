@@ -3,6 +3,7 @@ import os
 
 
 DEFAULT_CONFIG = "~/.paulobot.json"
+DEFAULT_DATABASE = "~/.paulobot.db"
 
 DEFAULT_TIMEOUT = 180
 
@@ -24,7 +25,7 @@ class json_field(object):
 
     On first access, it looksup field from JSON data, validates and then
     replaces self with value for future lookups.
-    
+
     """
     
     def __init__(self, field, default=None, mandatory=False, list_cls=None):
@@ -154,6 +155,10 @@ class Config(_Base):
 
     @json_field("token", mandatory=True)
     def token(self):
+        pass
+
+    @json_field("database", default=DEFAULT_DATABASE)
+    def database(self):
         pass
 
     @json_field("admins", default=[], list_cls=str)
