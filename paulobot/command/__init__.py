@@ -58,7 +58,7 @@ class Handler(object):
                                                 msg.user, msg.text)
             LOGGER.exception("Hit exception processing " + reason)
             msg.reply("Sorry, hit an exception when processing your "
-                        "message")
+                      "message")
 
         # Update last seen now that we have processed the command (this is
         # to ensure unreg when a user was idle does the unregister

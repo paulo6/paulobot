@@ -14,6 +14,10 @@ _CMDS_GLOBAL = {
                              Flags.Direct | Flags.Group),
     'timers'        : CmdDef('Show timers',
                              Flags.Direct | Flags.Admin),
+    'su'            : CmdDef('Run a command as a user',
+                             Flags.Direct | Flags.Group | Flags.Admin,
+                             args=["<user> Player to execute command as",
+                                   "<command:subcmd>+ Command string to execute"]),
 
     # Hidden commands
     'register'      : CmdDef(None,
@@ -59,3 +63,19 @@ class ClassHandler(defs.ClassHandlerInterface):
             msg.reply(f"```\n{text}\n```\n")
         else:
             msg.reply("No timers")
+
+    def _cmd_su(self, msg):
+        # Lookup the user
+        email = msg.args["user"]
+        if "@" not in email:
+            email = f"{email}@{self.pb.config.default_host}"
+        user = self.pb.user_manager.lookup_user(email)
+        if user is None:
+            raise CommandError(f"No such user {email}")
+        text = " ".join(msg.args["command"])
+
+        user.admin_override = msg.user.email
+        msg.user.send_msg(f"Running {text} as {user} in {msg.room}")
+        new_msg = common.Message(user, text, msg.room)
+        new_msg.user_reply_override = msg.user
+        self.pb.command_handler.handle_message(new_msg)

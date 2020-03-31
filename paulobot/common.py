@@ -174,6 +174,8 @@ class Message(object):
         self.text = text
         self.room = room
 
+        self.user_reply_override = None
+
         # -------------------------------------------------
         # Fields below are filled out by the command parser
         # -------------------------------------------------
@@ -236,7 +238,10 @@ class Message(object):
         Send a reply to the user who sent the message
 
         """
-        if self.user is not None:
+        if self.user_reply_override:
+            self.user_reply_override.send_msg(
+                f"({self.user}) {text}")
+        elif self.user is not None:
             self.user.send_msg(text)
 
 

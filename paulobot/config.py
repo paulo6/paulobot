@@ -67,6 +67,14 @@ class _Base:
         self.data = data
         self.parent = None
 
+        # Look for unexpected JSON fields
+        expected = [v._field for v in self.__class__.__dict__.values()
+                             if isinstance(v, json_field)]
+        bad = [f for f in data.keys() if f not in expected]
+        if bad:
+            raise ConfigError(f"Unexpected field(s) ",
+                              "' ,'".join(bad), self._object_name)
+
         # Trigger all the json field properites to read the
         # JSON and validate fields
         for name, val in self.__class__.__dict__.items():
@@ -187,4 +195,8 @@ class Config(_Base):
 
     @json_field("idle-time", default=120)
     def idle_time(self):
+        pass
+
+    @json_field("default-host")
+    def default_host(self):
         pass
