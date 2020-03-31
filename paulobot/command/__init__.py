@@ -450,7 +450,7 @@ class Handler(object):
                         for cmd, cmd_def in cmds
                         if not cmd_def.has_flag(Flags.Score))
 
-        # Filter out non-open ones
+        # Filter out non-flexi ones
         if not msg.sport or not msg.sport.is_flexible:
             cmds = ((cmd, cmd_def)
                         for cmd, cmd_def in cmds

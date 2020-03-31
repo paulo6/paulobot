@@ -25,7 +25,7 @@ _CMDS_GLOBAL = {
                            args=[_TIME_ARG + " Unregister for game at this time [default 'now']"]),
     'status'      : CmdDef('Show status of games for this sport',
                            Flags.Direct | Flags.Group),
-    'ready'       : CmdDef('Indicate an open game is ready to roll (no team '
+    'ready'       : CmdDef('Indicate an flexible game is ready to roll (no min player '
                            'limit game)',
                            Flags.Direct | Flags.Group | Flags.Flexi,
                            args=[_TIME_ARG + " Ready game at this "

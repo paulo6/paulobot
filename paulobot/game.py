@@ -279,8 +279,8 @@ class Game:
         self.add_players((player,))
 
     def add_players(self, players, flexible_ready=False):
-        if flexible_ready and not self.sport.is_open_mode:
-            raise Exception("Cannot set flexible_ready for a non-open game")
+        if flexible_ready and not self.sport.is_flexible:
+            raise Exception("Cannot set flexible_ready for a non-flexible game")
         changed = False
         for player in (p for p in players if p not in self._players):
             if self.has_space:
@@ -323,7 +323,7 @@ class Game:
     # directly!
     # --------------------------------------------------
     def on_enter_NotQuorate(self, event):
-        # Whenever we enter NotQuorate, reset open ready and quorate time
+        # Whenever we enter NotQuorate, reset flexi ready and quorate time
         self._flexible_ready = False
         self.quorate_time = None
 
@@ -690,9 +690,9 @@ class GameManager:
         for game in (g for t in past_times
                        for g in self._games[t]
                        if g.state is State.WaitingForTime):
-            # If this is an open game, and we have at least 2 players,
-            # set ready mark
-            if (self._sport.is_open_mode and
+            # If this is an flexi game, and we have at least 2 players,
+            # set ready mark so it rolls as timer fires
+            if (self._sport.is_flexible and
                 len(game.players) > 1):
                 game.flexible_ready = True
             game.trigger(Trigger.TimerFired)
