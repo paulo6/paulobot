@@ -215,7 +215,7 @@ class Game:
     def pretty(self):
         """
         Pretty string for use in messaging rooms.
-        
+
         Has user webex-tags but not sport tag.
 
         """
@@ -297,7 +297,7 @@ class Game:
         if self._hold_info is not None:
             self._hold_info = None
             self.trigger(Trigger.HoldRemoved) # pylint: disable=no-member
-            
+
     def player_is_ready(self, player):
         self._not_ready_players.remove(player)
         self.trigger(Trigger.PlayerReady) # pylint: disable=no-member
@@ -363,7 +363,7 @@ class Game:
             self._not_ready_players.clear()
 
         # Ideally we'd just remove ourselves from the rolling list if we
-        # aren't head to rolling. However this could trigger 
+        # aren't head to rolling. However this could trigger
         # the Area to roll the 2nd game for this time if that game is full.
         #
         # This is problematic for 2 reasons, if this game is heading for
@@ -390,7 +390,7 @@ class Game:
     # Private methods
     # --------------------------------------------------
     def _start_timeout_timer(self):
-        self._timeout_fire_time = (datetime.datetime.now() + 
+        self._timeout_fire_time = (datetime.datetime.now() +
                     datetime.timedelta(0, self._pb.config.ready_timeout))
         self._pb.timer.schedule_at(self._timeout_fire_time,
                                    self._timeout_timer_cb)

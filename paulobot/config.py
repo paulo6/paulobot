@@ -27,7 +27,7 @@ class json_field(object):
     replaces self with value for future lookups.
 
     """
-    
+
     def __init__(self, field, default=None, mandatory=False, list_cls=None):
         self._attr_name = None
         self._field = field

@@ -66,7 +66,7 @@ class Sport:
     def max_players(self):
         """
         The maximum number of players in a game.
-        
+
         """
         return self.team_size * 2
 
@@ -89,7 +89,7 @@ class Sport:
     def game_unregister(self, user, gtime):
         """
         Unregister the user for game at the supplied GTime.
-        
+
         """
         self._game_manager.unregister(gtime,
                                       self.players[user])
@@ -97,7 +97,7 @@ class Sport:
     def game_set_ready_mark(self, user, gtime, mark):
         """
         Set ready mark for game at the supplied GTime.
-        
+
         """
         self._game_manager.set_ready_mark(gtime,
                                           self.players[user],

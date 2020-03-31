@@ -32,7 +32,7 @@ class Handler(object):
             CommandType.Sport: sport_cmds.ClassHandler(self._pb),
             CommandType.Area: None,
         }
-    
+
     def handle_message(self, msg):
         try:
             self._handle_message_worker(msg)
@@ -175,7 +175,7 @@ class Handler(object):
                                        msg.cmd, msg.cmd),
                                 reply_to_user=True,
                                 include_sorry=False)
-            
+
         if msg.is_group and not cmd_def.has_flag(Flags.Group):
             raise CommandError(f"`{msg.cmd}` does not have a group-chat version",
                                reply_to_user=True)
