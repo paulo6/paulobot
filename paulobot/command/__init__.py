@@ -9,7 +9,9 @@ from . import defs
 
 from .defs import (ParseError, CommandError, Flags)
 
-from paulobot.templates.commands import MAIN_HELP_PREAMBLE, MAIN_HELP_LOCATION, MAIN_HELP_NO_LOCATION
+from paulobot.templates.commands import (
+    MAIN_HELP_PREAMBLE, MAIN_HELP_LOCATION, MAIN_HELP_NO_LOCATION,
+    HELP_CMD, HELP_CMD_USAGE, HELP_CMD_USAGE2)
 from paulobot.common import CommandType, BadAction, MD_RAW
 
 LOGGER = logging.getLogger(__name__)
@@ -361,7 +363,7 @@ class Handler(object):
 
     def _handle_help_cmd(self, msg, cmd):
         handler_class = self._handlers[msg.cmd_type]
-        help = "Help for '{}{}'".format(
+        help = "**Help for:** `{}{}`".format(
             "" if msg.cmd_type_name is None else f"{msg.cmd_type_name} ",
             cmd)
 
@@ -385,52 +387,41 @@ class Handler(object):
         #    handler_class.handle_command(cmd, help_msg)
         #    return
 
-        if cmd_def.grp_desc is not None:
-            help += "\n  direct-chat usage: " + cmd_def.desc
-            help += "\n  group-chat usage: " + cmd_def.grp_desc
-        else:
-            flags = []
-            if cmd_def.has_flag(Flags.Direct):
-                flags.append("direct-chat")
-            if cmd_def.has_flag(Flags.Group):
-                flags.append("group-chat")
-
-            help += "\n  {} usage: {}".format(" & ".join(flags), cmd_def.desc)
-
-        # Three possibile options:
-        #  - args None and grp_args None: No arguments at all
-        #  - args not None and grp_args None: MUC and SUC share args
-        #  - args None and grp_args not None: SUC no args, MUC args
-        #  - args not None and len(grp_args) == 0: SUC args, MUC no args
-
-        if (cmd_def.args_def is None or
-            len(cmd_def.args_def) == 0) and cmd_def.grp_args_def is None:
-            help += "\n\n  Command takes no arguments"
-        else:
-            if cmd_def.args_def is not None and len(cmd_def.args_def) > 0:
-                prefix = "" if cmd_def.grp_args_def is None else "Direct-chat "
-                help += "\n\n  {}Arguments: {}\n".format(prefix,
-                                                         cmd_def.args_str)
-                for arg in cmd_def.args_def:
-                    if arg.desc is not None:
-                        help += "    {}: {}\n".format(arg.name, arg.desc)
+        cmd_name = "{}{}".format(
+            "" if msg.cmd_type_name is None else f"{msg.cmd_type_name} ",
+            cmd)
+        if cmd_def.grp_args_def is None:
+            if not cmd_def.args_def:
+                arg_str = "None"
+                arg_list = ""
             else:
-                # If we are here then there must be MUC specific args, so
-                # indicate SUC has no args.
-                help += "\n  Direct-chat variant has no arguments"
+                arg_str = cmd_def.args_str
+                arg_list = "\n".join(f"- {arg.name}: {arg.desc}"
+                                     for arg in cmd_def.args_def)
 
-            # Have any group args been specified?
-            if cmd_def.grp_args_def is not None:
-                if len(cmd_def.grp_args_def) == 0:
-                    help += "\n  Group-chat variant has no arguments"
-                else:
-                    help += "\n  Group-chat Arguments: {}\n".format(
-                                        cmd_def.grp_args_str)
-                for arg in cmd_def.grp_args_def:
-                    if arg.desc is not None:
-                        help += "    {}: {}\n".format(arg.name, arg.desc)
+            if cmd_def.grp_desc is not None:
+                usage = HELP_CMD_USAGE2.format(type1="direct-chat",
+                                               desc1=cmd_def.desc,
+                                               type2="group-chat",
+                                               desc2=cmd_def.grp_desc)
+            else:
+                flags = []
+                if cmd_def.has_flag(Flags.Direct):
+                    flags.append("direct-chat")
+                if cmd_def.has_flag(Flags.Group):
+                    flags.append("group-chat")
+                usage = HELP_CMD_USAGE.format(types=" & ".join(flags),
+                                              desc=cmd_def.desc)
 
-        msg.reply_to_user(MD_RAW.format(help))
+            help = HELP_CMD.format(cmd=cmd_name,
+                                   usage=usage,
+                                   args=arg_str,
+                                   arg_list=arg_list)
+        else:
+            # @@@ Handle different direct vs group arguments
+            pass
+
+        msg.reply_to_user(help)
 
     def _handle_question(self, msg, handler_class):
         # Get set of possible commands
@@ -465,8 +456,15 @@ class Handler(object):
                  for cmd, cmd_def in cmds
                    if cmd_def.desc is not None)
 
+        cmds = (c for c, _ in cmds)
+
+        # If global then add sports/areas
+        if msg.cmd_type is CommandType.Global:
+            cmds = list(cmds) + [s for l in msg.user.locations
+                                   for s in l.sports.keys()]
+
         # Get list of just the cmds
-        cmd_names = sorted([cmd for cmd, _ in cmds])
+        cmd_names = sorted(cmds)
 
         # Find the longest, and add two for max column width
         col_width = max(len(cmd) for cmd in cmd_names) + 2
@@ -481,7 +479,7 @@ class Handler(object):
                                  for c in cmd_names[idx:idx + col_count]))
 
         # Send results, to room if this was from a room
-        msg.reply(MD_RAW.format("Options:\n" + "\n".join(lines)))
+        msg.reply("Options:\n" + MD_RAW("\n".join(lines)))
 
     def _handle_arg_question(self, msg, cmd_def):
         # First see whether there is a group arg override
@@ -490,9 +488,9 @@ class Handler(object):
             if len(cmd_def.grp_args_def) == 0:
                 args_str = "Group-chat variant has no arguments"
             else:
-                args_str = f"Arguments: `{cmd_def.grp_args_str}`"
+                args_str = f"Arguments: {cmd_def.grp_args_str}"
         elif cmd_def.args_def is not None and len(cmd_def.args_def) > 0:
-            args_str = f"Arguments: `{cmd_def.args_str}`"
+            args_str = f"Arguments: {cmd_def.args_str}"
         else:
             args_str = "Command has no arguments"
 

@@ -1,3 +1,5 @@
+SPACE = "&nbsp;"
+
 SPORT_STATUS = """**{sport} Games status**  
 {games}
 
@@ -47,3 +49,25 @@ Type `help <area>` for details about area commands.
 """
 
 MAIN_HELP_NO_LOCATION = """You are not in any sport locations."""
+
+
+HELP_CMD = """
+**Help for **`{cmd}`
+
+{usage}
+
+**Arguments** {args}  
+{arg_list}
+"""
+
+HELP_CMD_USAGE = """
+**Usage** _{types}_  
+&nbsp;&nbsp;&nbsp;&nbsp;{desc}
+"""
+
+HELP_CMD_USAGE2 = """
+**Usage** _{type1}_  
+&nbsp;&nbsp;&nbsp;&nbsp;{desc1}  
+**Usage** _{type2}_  
+&nbsp;&nbsp;&nbsp;&nbsp;{desc2}
+"""

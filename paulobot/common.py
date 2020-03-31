@@ -18,7 +18,8 @@ MINUTE_GRANULARITY = 5
 
 MD_LINE_SPLIT = "  \n"
 
-MD_RAW = "```\n{}\n```"
+def MD_RAW(s):
+    return "```\n{}\n```".format(s)
 
 
 # -----------------------------------------------------------

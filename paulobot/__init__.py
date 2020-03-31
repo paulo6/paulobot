@@ -123,9 +123,9 @@ class PauloBot:
         self.user_manager.restore_from_db()
         self.loc_manager.restore_from_db()
 
-        # Notify the notify list
-        for email in self.config.notify_list:
-            self.send_message("I've just started up!!", user_email=email)
+        # Notify the notify list that we have started!
+        for email in self.config.notify_list: # pylint: disable=not-an-iterable
+            self.send_message(f"I've just started up ({self.boot_time})!!", user_email=email)
 
     def run(self):
         self._webex.run(self.main_loop)

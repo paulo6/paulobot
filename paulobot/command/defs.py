@@ -39,11 +39,16 @@ TIME_FORMATS = [
 
 
 # Player icons
-class Icons(enum.Enum):
-    Dream = ":heart:"
-    Cream = ":poop:"
-    Champ = ":star:"
-    Active = ":coffee:"
+class Emoticons(enum.Enum):
+    Heart  = u"\U0001F496"
+    Poop   = u"\U0001F4A9"
+    Star   = u"\u2B50"
+    Coffee = u"\u2615"
+
+    SadFace     = u'\U0001f641' # :(
+    HappyFace   = u'\U0001f642' # :)
+    ExcitedFace = u'\U0001f603' # :D
+    CryingFace  = u'\U0001f622' # :'(
 
 
 # Command flags
@@ -230,7 +235,7 @@ class ArgDef(object):
             # choices instead
             arg_str = "|".join(str(c) for c in self.choices)
         else:
-            arg_str = "<{}>".format(self.name)
+            arg_str = "<<{}>>".format(self.name)
 
         if self.has_flag(self.FLAG_REPEATED):
             arg_str += "+"
@@ -591,9 +596,9 @@ class ArgParser(collections.abc.MutableMapping):
 
         # Add special detail for time
         if arg_def.ARG_TIME in [a.arg_type for a in arg_def.choices]:
-            error_msg += ".\nSupported time formats: {}".format(
+            error_msg += ".  \nSupported time formats: {}".format(
                                 ", ".join(d for d, _, _ in TIME_FORMATS))
-            error_msg += f"\nMinutes must be a multiple of {arg_def.time_granularity}"
+            error_msg += f"  \nMinutes must be a multiple of {arg_def.time_granularity}"
         raise BadArgValue(error_msg)
 
     def _parse_type_keyword(self, arg_def, values):
@@ -727,18 +732,18 @@ class ClassHandlerInterface(object):
         if (m_player is not None
             and team_stats.dream_team is not None
             and m_player in team_stats.dream_team):
-            icons.append(Icons.Dream)
+            icons.append(Emoticons.Heart)
         if (m_player is not None
             and team_stats.creamed_team is not None
             and m_player in team_stats.creamed_team):
-            icons.append(Icons.Cream)
+            icons.append(Emoticons.Poop)
 
         leader_board = sport.stats.get_leader_board(include_stats=False)
         if (m_player in leader_board
             and leader_board.index(m_player) == 0):
-            icons.append(Icons.Champ)
+            icons.append(Emoticons.Star)
         if m_player == self.get_most_active_player(sport, include_stats=False):
-            icons.append(Icons.Active)
+            icons.append(Emoticons.Coffee)
         return icons
 
     def get_global_player_status(self, g_player):
