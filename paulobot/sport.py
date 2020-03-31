@@ -71,6 +71,10 @@ class Sport:
         return self.team_size * 2
 
     @property
+    def is_open_mode(self):
+        return self.max_players == 0
+
+    @property
     def games(self):
         """
         List of games sorted by gtime, then create time.
@@ -125,3 +129,6 @@ class Sport:
         """
         if self.location.room:
             self.location.room.send_msg(f"{self.tag} {message}")
+
+    def restore_game(self, rec):
+        self._game_manager.restore_record(rec)

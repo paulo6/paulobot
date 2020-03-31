@@ -16,6 +16,7 @@ class User:
         self.first_name = first_name
         self.locations = set()
         self.in_games = []
+        self.db_id = None
         self._pb = pb
         self._last_msg = None
         self._update_cb = functools.partial(update_cb, self)
@@ -93,8 +94,7 @@ class User:
                 if player in game.not_ready_players:
                     game.player_is_ready(player)
 
-    def add_location(self, loc):
-        self.locations.add(loc)
+    def save(self):
         self._update_cb()
 
 
@@ -107,8 +107,6 @@ class UserManager:
     def __init__(self, pb):
         self._pb = pb
         self._users = {}
-        self._user_to_db_id = {}
-        self._db_id_to_user = {}
         self._table = Table(self._pb.database, "users", self.DB_FIELDS)
 
     def lookup_user(self, email):
@@ -116,9 +114,7 @@ class UserManager:
 
     def create_user(self, email, full_name, first_name):
         user = self._create_user(email, full_name, first_name)
-        db_id = self._table.create(self._user_to_db_fields(user))
-        self._user_to_db_id[user] = db_id
-        self._db_id_to_user[db_id] = user
+        user.db_id = self._table.create(self._user_to_db_fields(user))
         self._pb.loc_manager.add_user_to_locations(user)
         return user
 
@@ -127,14 +123,13 @@ class UserManager:
             user = self._create_user(email=rec["email"],
                                      full_name=rec["data"]["full_name"],
                                      first_name=rec["data"]["first_name"])
-            self._user_to_db_id[user] = rec.id
-            self._db_id_to_user[rec.id] = user
+            user.db_id = rec.id
 
             # Restore loctions from DB, then check whether the user has
             # joined any new locations since the last DB update
-            self._pb.loc_manager.add_user_to_locations(
-                user,
-                rec["data"]["locations"])
+            for loc in (self._pb.loc_manager.locations[l]
+                        for l in rec["data"]["locations"]):
+                loc.add_user(user)
             self._pb.loc_manager.add_user_to_locations(user)
         LOGGER.info("Restored %s users from DB", len(self._users))
 
@@ -158,5 +153,5 @@ class UserManager:
         }
 
     def _update_db(self, user):
-        self._table.update_record(self._user_to_db_id[user],
+        self._table.update_record(user.db_id,
                                   self._user_to_db_fields(user))

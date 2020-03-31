@@ -390,7 +390,7 @@ class Table:
         LOGGER.info("Deleting '%s' record id %s",
                     self._table_name, record_id)
         self._db.delete(self._table_name,
-                        {UNIQUE_ID : record_id})
+                        ((UNIQUE_ID, "=", record_id),))
 
     def delete_record_by_field(self, field_name, field_val):
         LOGGER.info("Deleting '%s' record with %s val '%s'",
@@ -403,6 +403,9 @@ class Table:
 
 
 def _from_raw_val(field_type, val):
+    if val is None:
+        return val
+
     if field_type is FieldType.JSON:
         val = json.loads(val)
 
@@ -413,6 +416,9 @@ def _from_raw_val(field_type, val):
 
 
 def _to_raw_val(field_type, val):
+    if val is None:
+        return val
+
     if field_type is FieldType.JSON:
         val = json.dumps(val)
 

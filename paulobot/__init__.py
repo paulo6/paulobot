@@ -121,6 +121,7 @@ class PauloBot:
 
         # Restore Databases
         self.user_manager.restore_from_db()
+        self.loc_manager.restore_from_db()
 
         # Notify the notify list
         for email in self.config.notify_list:

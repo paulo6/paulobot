@@ -9,6 +9,7 @@ import logging
 import paulobot.templates.game as template
 from paulobot.common import GameState as State
 from paulobot.common import PlayerList, GTime, BadAction
+from paulobot.database import FieldType
 
 
 class Trigger:
@@ -28,6 +29,14 @@ PLAYER_CHECK_BLOCKERS = ['is_future_game', 'is_held', 'is_area_busy']
 GTIME_NOW = GTime(None)
 
 LOGGER = logging.getLogger(__name__)
+
+DB_FIELDS = {
+    "sport":        FieldType.TEXT,
+    "gtime":        FieldType.DATETIME,
+    "created_time": FieldType.DATETIME,
+    "quorate_time":   FieldType.DATETIME,
+    "data":         FieldType.JSON,
+}
 
 GAME_TRANSITIONS = [
     # Player added transitions
@@ -146,6 +155,8 @@ class Game:
         self.quorate_time = None
         self.rolled_time = None
 
+        self.db_id = None
+
         # Need to use a list for players because sign up order is important.
         self._players = PlayerList(sport=sport)
         self._not_ready_players = set()
@@ -167,7 +178,7 @@ class Game:
     # --------------------------------------------------
     @property
     def has_space(self):
-        return (self._max_players == 0 and not self.open_ready) or len(self._players) < self._max_players
+        return (self.sport.is_open_mode and not self.open_ready) or len(self._players) < self._max_players
 
     @property
     def has_players(self):
@@ -195,7 +206,7 @@ class Game:
     # --------------------------------------------------
     @property
     def spaces_left(self):
-        return 0 if self._max_players == 0 else self._max_players - len(self._players)
+        return 0 if self.sport.is_open_mode else self._max_players - len(self._players)
 
     @property
     def players(self):
@@ -241,7 +252,7 @@ class Game:
 
     @open_ready.setter
     def open_ready(self, val):
-        if not self._max_players == 0:
+        if not self.sport.is_open_mode:
             raise Exception("Cannot set open_ready for a non-open game")
         if val and not self._open_ready:
             self._open_ready = True
@@ -265,7 +276,9 @@ class Game:
     def add_player(self, player):
         self.add_players((player,))
 
-    def add_players(self, players):
+    def add_players(self, players, set_open_ready=False):
+        if set_open_ready and not self.sport.is_open_mode:
+            raise Exception("Cannot set open_ready for a non-open game")
         changed = False
         for player in (p for p in players if p not in self._players):
             if self.has_space:
@@ -274,6 +287,7 @@ class Game:
                 changed = True
 
         if changed:
+            self._open_ready = set_open_ready
             self.trigger(Trigger.PlayerAdded) # pylint: disable=no-member
 
     def remove_player(self, player):
@@ -307,8 +321,9 @@ class Game:
     # directly!
     # --------------------------------------------------
     def on_enter_NotQuorate(self, event):
-        # Whenever we enter NotQuorate, reset open ready
+        # Whenever we enter NotQuorate, reset open ready and quorate time
         self._open_ready = False
+        self.quorate_time = None
 
     def on_enter_Quorate(self, event):
         # Whenever we enter quorate state, try to roll
@@ -438,6 +453,7 @@ class GameManager:
 
         self._games = collections.defaultdict(list)
         self._reorg_in_progress = False
+        self._restore_in_progress = False
 
     def __repr__(self):
         return f"<GameManager({self._sport.name})>"
@@ -509,6 +525,20 @@ class GameManager:
                        for g in gs):
             yield game
 
+    def restore_record(self, rec):
+        self._restore_in_progress = True
+        try:
+            game = self._create_game(GTime(rec['gtime']), True)
+            game.created_time = rec['created_time']
+            game.quorate_time = rec['quorate_time']
+            game.db_id = rec.id
+            game.add_players((self._sport.players[self._pb.user_manager.lookup_user(e)]
+                             for e in rec['data']['players']),
+                             set_open_ready=rec['data'].get('open_ready', False))
+        finally:
+            self._restore_in_progress = False
+
+
     # --------------------------------------------------
     # Private game state handlers
     # --------------------------------------------------
@@ -528,7 +558,7 @@ class GameManager:
         # Now do some post announce handling
 
         # If the event was an unregister, see whether players can be shuffled!
-        if event.event is Trigger.PlayerRemoved:
+        if event.event.name == Trigger.PlayerRemoved:
             self._reorganize_games(combine_gtime=game.gtime)
 
         # Check whether this is an old game that needs to be promoted to now.
@@ -545,6 +575,13 @@ class GameManager:
             _event_source_is_state(event, State.PlayersNotReady)):
             self._sport.area.remove_from_rolling(game)
 
+        # Update DB on events that change record fields
+        if (event.event.name in (Trigger.PlayerAdded,
+                                Trigger.PlayerRemoved,
+                                Trigger.HoldAdded,
+                                Trigger.HoldRemoved) and
+            game.state is not State.Empty):
+            self._save_game(game)
 
     def _event_game_state_empty(self, event):
         self._delete_game(event.model)
@@ -610,6 +647,26 @@ class GameManager:
     # --------------------------------------------------
     # Private Utils
     # --------------------------------------------------
+    def _save_game(self, game):
+        if self._restore_in_progress:
+            return
+
+        rec = {
+            'sport':        self._sport.name,
+            'gtime':        game.gtime.val,
+            'created_time': game.created_time,
+            'quorate_time': game.quorate_time,
+            'data': {
+                'players': [p.user.email for p in game.players],
+                'open_ready': game.open_ready,
+            }
+        }
+        if game.db_id is None:
+            game.db_id = self._sport.location.game_table.create(rec)
+        else:
+            self._sport.location.game_table.update_record(
+                game.db_id, rec)
+
     def _rearm_future_timer(self):
         if self._pb.timer.is_scheduled(self._future_timer_cb):
             self._pb.timer.cancel(self._future_timer_cb)
@@ -631,6 +688,11 @@ class GameManager:
         for game in (g for t in past_times
                        for g in self._games[t]
                        if g.state is State.WaitingForTime):
+            # If this is an open game, and we have at least 2 players,
+            # set ready mark
+            if (self._sport.is_open_mode and
+                len(game.players) > 1):
+                game.open_ready = True
             game.trigger(Trigger.TimerFired)
 
         # See whether there are any non quorate games that
@@ -641,9 +703,9 @@ class GameManager:
         # Re-arm the timer for next future game
         self._rearm_future_timer()
 
-    def _create_game(self, gtime):
+    def _create_game(self, gtime, restore=False):
         # Don't allow a new game in the past
-        if not gtime.is_for_now and gtime < datetime.datetime.now():
+        if not restore and not gtime.is_for_now and gtime < datetime.datetime.now():
             raise BadAction("Cannot start a game in the past!")
         game = Game(self._pb, self._sport, self, gtime)
         self._machine.add_model(game)
@@ -675,6 +737,8 @@ class GameManager:
             # Make sure we definitely are not in any area queues
             self._sport.area.remove_from_rolling(game)
             self._sport.area.remove_from_queue(game)
+
+            self._sport.location.game_table.delete_record(game.db_id)
 
     def _announce_game(self, game):
         self._sport.announce(game.pretty)
@@ -748,6 +812,14 @@ class GameManager:
                     games[idx].add_players(players)
                 # Move onto next game
                 idx += 1
+
+def db_rec_time_key(rec):
+    if rec['quorate_time'] is None:
+        ready = datetime.datetime.max
+    else:
+        ready = rec['quorate_time']
+
+    return ready, rec['created_time']
 
 
 def _event_dest_is_state(event, state):

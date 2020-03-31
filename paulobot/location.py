@@ -1,5 +1,10 @@
+import logging
 
 import paulobot.sport
+import paulobot.database
+import paulobot.game
+
+LOGGER = logging.getLogger(__name__)
 
 class Area:
     def __init__(self, location, name, desc, size=1):
@@ -59,7 +64,7 @@ class Area:
             self._rolling.append(game)
 
     def remove_from_rolling(self, game):
-        if game not in self._rolling:
+        if game in self._rolling:
             self._rolling.remove(game)
 
     def queue_index(self, game):
@@ -89,6 +94,10 @@ class Location:
         self.sports = {}
         self.areas = {}
         self.users = set()
+        self.game_table = paulobot.database.Table(
+                self._pb.database,
+                f"games_{self.name}",
+                paulobot.game.DB_FIELDS)
 
     def __str__(self):
         return self.name
@@ -99,7 +108,15 @@ class Location:
 
         if user not in self.users:
             self.users.add(user)
-            user.add_location(self)
+            user.locations.add(self)
+
+    def restore_from_db(self):
+        recs = sorted(self.game_table.find_all(),
+                          key=paulobot.game.db_rec_time_key)
+        for rec in recs:
+            self.sports[rec['sport']].restore_game(rec)
+        LOGGER.info("Restored %s games for location %s from DB",
+                    len(recs), self.name)
 
 
 class LocationManager:
@@ -115,19 +132,19 @@ class LocationManager:
             return locs[0]
         return None
 
-    def add_user_to_locations(self, user, loc_names=None):
+    def add_user_to_locations(self, user):
         # Check to see whether this user is already in rooms associated with
         # locations
-        if loc_names is None:
-            for loc in (l for l in self.locations.values() if l.room):
-                users = self._pb.get_room_users(loc.room)
-                if user in users:
-                    loc.add_user(user)
-        else:
-            for loc in (self.locations[l] for l in loc_names):
-                if user not in loc.users:
-                    loc.add_user(user)
+        for loc in (l for l in self.locations.values() if l.room
+                      and user not in l.users):
+            users = self._pb.get_room_users(loc.room)
+            if user in users:
+                loc.add_user(user)
+                user.save()
 
+    def restore_from_db(self):
+        for loc in self.locations.values():
+            loc.restore_from_db()
 
     def _get_null_area(self, loc):
         if None not in loc.areas:
