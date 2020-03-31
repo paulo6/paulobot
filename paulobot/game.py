@@ -796,7 +796,7 @@ class GameManager:
         # they can be combined.
         if combine_gtime is not None and len(self._games[combine_gtime]) > 1:
             self._sport.announce(
-                "Checking to see if any players can be promoted for games for {combine_gtime}...")
+                f"Checking to see if any players can be promoted for games for {combine_gtime}...")
 
             # Start at the first game and shuffle players down from the
             # one above, if there is space. Walk the list by index as

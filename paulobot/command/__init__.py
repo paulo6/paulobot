@@ -488,9 +488,9 @@ class Handler(object):
             if len(cmd_def.grp_args_def) == 0:
                 args_str = "Group-chat variant has no arguments"
             else:
-                args_str = "Arguments: " + cmd_def.grp_args_str
+                args_str = f"Arguments: `{cmd_def.grp_args_str}`"
         elif cmd_def.args_def is not None and len(cmd_def.args_def) > 0:
-            args_str = "Arguments: " + cmd_def.args_str
+            args_str = f"Arguments: `{cmd_def.args_str}`"
         else:
             args_str = "Command has no arguments"
 
