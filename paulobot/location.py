@@ -33,6 +33,14 @@ class Area:
     def tag(self):
         return f"<{self.name.upper()}>"
 
+    @property
+    def queue_len(self):
+        return len(self._queue)
+
+    @property
+    def is_none(self):
+        return self.name is None
+
     def is_busy(self, game=None):
         # If there's a hold then it's busy!
         if self._manual_busy is not None:
@@ -181,7 +189,7 @@ class LocationManager:
                     area,
                     team_size=c_sport.team_size,
                     team_count=c_sport.team_count,
-                    is_flexible=c_sport.is_flexible)
+                    min_players=c_sport.min_players)
                 loc.sports[sport.name] = sport
 
 

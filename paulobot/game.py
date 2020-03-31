@@ -507,8 +507,8 @@ class GameManager:
             raise BadAction(f"You are not present in game for {gtime}")
 
         game = games[0]
-        if len(game.players) < 2 and mark:
-            raise BadAction(f"Need at least 2 players")
+        if len(game.players) < self._sport.min_players and mark:
+            raise BadAction(f"Need at least {self._sport.min_players} players")
 
         game.flexible_ready = mark
 
@@ -690,10 +690,10 @@ class GameManager:
         for game in (g for t in past_times
                        for g in self._games[t]
                        if g.state is State.WaitingForTime):
-            # If this is an flexi game, and we have at least 2 players,
+            # If this is an flexi game, and we have the min players,
             # set ready mark so it rolls as timer fires
             if (self._sport.is_flexible and
-                len(game.players) > 1):
+                len(game.players) >= self._sport.min_players):
                 game.flexible_ready = True
             game.trigger(Trigger.TimerFired)
 

@@ -25,7 +25,7 @@ class Sport:
 
     """
     def __init__(self, pb, location, name, desc, area,
-                 team_size, team_count, is_flexible=False,
+                 team_size, team_count, min_players=None,
                  has_scores=True, allow_draws=False):
         """
         Initialize the office sport.
@@ -58,16 +58,32 @@ class Sport:
         self.desc = desc
         self.team_size = team_size
         self.team_count = team_count
-        self.is_flexible = is_flexible or team_size == 0
+        self._min_players = min_players
         self.has_scores = has_scores
         self.area = area
         # Players keyed by User object
         self.players = {}
         self._game_manager = GameManager(pb, self)
 
+    def __str__(self):
+        return self.name
+
     @property
     def tag(self):
         return f"[{self.name.upper()}]"
+
+    @property
+    def is_flexible(self):
+        return self.max_players == 0 or (self.min_players is not None and
+                                         self.min_players < self.max_players)
+
+    @property
+    def min_players(self):
+        if self._min_players is not None:
+            return self._min_players
+        if self.max_players == 0:
+            return 1
+        return None
 
     @property
     def max_players(self):

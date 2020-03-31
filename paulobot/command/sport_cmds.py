@@ -72,6 +72,13 @@ class ClassHandler(defs.ClassHandlerInterface):
     def prefix_string(self, msg, text):
         return f"[{msg.sport.name.upper()}] {text}"
 
+    def _game_action_reply(self, msg, action, gtime):
+        text = f"{action} for **{msg.sport}** game for **{gtime}**"
+        if not msg.room and msg.location.room:
+            msg.reply(f"{text} in room _{msg.location.room.title}_")
+        elif not msg.room:
+            msg.reply(f"{text} in location _{msg.location}_")
+
     def _cmd_reg(self, msg):
         gtime = self.get_gtime(msg)
 
@@ -81,18 +88,12 @@ class ClassHandler(defs.ClassHandlerInterface):
         # no longer idle)
         msg.user.update_last_msg(update_idle_games=False)
         msg.sport.game_register(msg.user, gtime)
-        if not msg.room and msg.location.room:
-            msg.reply(f"Registered for game for {gtime} in '{msg.location.room.title}'")
-        elif not msg.room:
-            msg.reply(f"Registered for game for {gtime}")
+        self._game_action_reply(msg, "Registered", gtime)
 
     def _cmd_unreg(self, msg):
         gtime = self.get_gtime(msg)
         msg.sport.game_unregister(msg.user, gtime)
-        if not msg.room and msg.location.room:
-            msg.reply(f"Unregistered for game for {gtime} in '{msg.location.room.title}'")
-        elif not msg.room:
-            msg.reply(f"Unregistered for game for {gtime}")
+        self._game_action_reply(msg, "Unregistered", gtime)
 
     def _cmd_ready(self, msg):
         gtime = self.get_gtime(msg)
@@ -103,18 +104,12 @@ class ClassHandler(defs.ClassHandlerInterface):
         # no longer idle)
         msg.user.update_last_msg(update_idle_games=False)
         msg.sport.game_set_ready_mark(msg.user, gtime, True)
-        if not msg.room and msg.location.room:
-            msg.reply(f"Game for {gtime} marked as ready '{msg.location.room.title}'")
-        elif not msg.room:
-            msg.reply(f"Game for {gtime} marked as ready")
+        self._game_action_reply(msg, "Set ready", gtime)
 
     def _cmd_unready(self, msg):
         gtime = self.get_gtime(msg)
         msg.sport.game_set_ready_mark(msg.user, gtime, False)
-        if not msg.room and msg.location.room:
-            msg.reply(f"Game for {gtime} marked as unready '{msg.location.room.title}'")
-        elif not msg.room:
-            msg.reply(f"Game for {gtime} marked as unready")
+        self._game_action_reply(msg, "Set unready", gtime)
 
     def _cmd_status(self, msg):
         games = msg.sport.games
@@ -124,11 +119,17 @@ class ClassHandler(defs.ClassHandlerInterface):
         else:
             text = MD_LINE_SPLIT.join(self.prefix_string(msg, g.pretty)
                                       for g in msg.sport.games)
-
-        msg.reply(template.SPORT_STATUS.format(
-            sport=msg.sport.name.upper(),
-            games=text,
-            area=f"{msg.sport.area.name.title()} free",
-            pending=f"None",
-        ))
+        if msg.sport.area.is_none:
+            msg.reply(template.SPORT_STATUS_NO_AREA.format(
+                sport=msg.sport.name.upper(),
+                games=text,
+                pending=f"None",
+            ))
+        else:
+            msg.reply(template.SPORT_STATUS.format(
+                sport=msg.sport.name.upper(),
+                games=text,
+                area=f"{msg.sport.area.name.title()} free",
+                pending=f"None",
+            ))
 

@@ -11,6 +11,15 @@ SPORT_STATUS = """**{sport} Games status**
 """
 
 
+SPORT_STATUS_NO_AREA = """**{sport} Games status**  
+{games}
+
+
+**Pending {sport} results**  
+{pending}
+"""
+
+
 MAIN_HELP_PREAMBLE = """
 ###Welcome to PauloBot!
 

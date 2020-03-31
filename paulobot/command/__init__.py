@@ -280,9 +280,11 @@ class Handler(object):
                 areas.extend(loc.areas.values())
 
             def sport_str(s):
-                info = [f"area: {s.area}"]
+                info = []
+                if not s.area.is_none:
+                    info.append(f"area: {s.area}")
                 if s.is_flexible:
-                    info.append(f"min-players: 2")
+                    info.append(f"min-players: {s.min_players}")
                 if s.team_count == 1 and s.team_size == 0:
                     info.append(f"max-players: any")
                 elif s.team_count == 1 and s.team_size > 0:
@@ -296,7 +298,7 @@ class Handler(object):
                 "  - " + "\n  - ".join(sport_str(s)
                                        for s in sports),
                 "  - " + "\n  - ".join(f"{a.name} - {a.desc} _(location: {a.location})_"
-                                       for a in areas))
+                                       for a in areas if not a.is_none))
 
         help = MAIN_HELP_PREAMBLE.format(locations, global_help)
         msg.reply_to_user(help)

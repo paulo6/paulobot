@@ -113,12 +113,12 @@ class Sport(_Base):
     def team_size(self):
         pass
 
-    @json_field("team-count", default=1)
+    @json_field("team-count", default=2)
     def team_count(self):
         pass
 
-    @json_field("flexible", default=False)
-    def is_flexible(self):
+    @json_field("min-players", default=None)
+    def min_players(self):
         pass
 
     @json_field("area")

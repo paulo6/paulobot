@@ -138,7 +138,6 @@ class PauloBot:
         if not room_id and not user_email:
             raise Exception("One of room_id or user_email must be specified!")
 
-
         logging.info("Sending %s message to '%s'",
                      "group" if room_id else "direct",
                      self._webex.get_room_title(room_id) if room_id else user_email)
