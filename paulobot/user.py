@@ -1,4 +1,5 @@
 import datetime
+import functools
 
 import paulobot.game
 import logging
@@ -8,7 +9,8 @@ from paulobot.database import Table, FieldType
 LOGGER = logging.getLogger(__name__)
 
 class User:
-    def __init__(self, pb, email, full_name, first_name):
+    def __init__(self, pb, email, full_name, first_name,
+                 update_cb):
         self.email = email
         self.full_name = full_name
         self.first_name = first_name
@@ -16,6 +18,7 @@ class User:
         self.in_games = []
         self._pb = pb
         self._last_msg = None
+        self._update_cb = functools.partial(update_cb, self)
 
     def __hash__(self):
         return hash(self.email)
@@ -90,6 +93,10 @@ class User:
                 if player in game.not_ready_players:
                     game.player_is_ready(player)
 
+    def add_location(self, loc):
+        self.locations.add(loc)
+        self._update_cb()
+
 
 class UserManager:
     DB_FIELDS = {
@@ -110,8 +117,9 @@ class UserManager:
     def create_user(self, email, full_name, first_name):
         user = self._create_user(email, full_name, first_name)
         db_id = self._table.create(self._user_to_db_fields(user))
-        self._user_to_db_id[user] = self._table.create(self._user_to_db_fields(user))
+        self._user_to_db_id[user] = db_id
         self._db_id_to_user[db_id] = user
+        self._pb.loc_manager.add_user_to_locations(user)
         return user
 
     def restore_from_db(self):
@@ -122,22 +130,21 @@ class UserManager:
             self._user_to_db_id[user] = rec.id
             self._db_id_to_user[rec.id] = user
 
-            # Restore loctions from DB, and update record if we end up with
-            # more than the record.
+            # Restore loctions from DB, then check whether the user has
+            # joined any new locations since the last DB update
             self._pb.loc_manager.add_user_to_locations(
                 user,
                 rec["data"]["locations"])
-            if len(rec["data"]["locations"]) != len(user.locations):
-                self._update_db(user)
+            self._pb.loc_manager.add_user_to_locations(user)
         LOGGER.info("Restored %s users from DB", len(self._users))
 
     def _create_user(self, email, full_name, first_name):
         if email in self._users:
             return Exception(f"User {email} already exists!")
 
-        user = User(self._pb, email, full_name, first_name)
+        user = User(self._pb, email, full_name, first_name,
+                    update_cb=self._update_db)
         self._users[email] = user
-        self._pb.loc_manager.add_user_to_locations(user)
         return user
 
     def _user_to_db_fields(self, user):

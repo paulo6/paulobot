@@ -99,7 +99,7 @@ class Location:
 
         if user not in self.users:
             self.users.add(user)
-            user.locations.add(self)
+            user.add_location(self)
 
 
 class LocationManager:

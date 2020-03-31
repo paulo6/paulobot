@@ -356,22 +356,23 @@ class Table:
                               (cond,))[0]
 
 
-    def update_record(self, fields, record_id, log_prev=False):
+    def update_record(self, record_id, fields, log_prev=False):
         # Lookup current record so we can log change
         if log_prev:
             prev_record = self.find_record(record_id)
 
         # Make sure the conditions and fields are valid
         self._prepare_fields(fields, "Update fields")
-        self._db.update(fields, (UNIQUE_ID, "=", record_id,))
+        self._db.update(self._table_name, fields,
+                        ((UNIQUE_ID, "=", record_id),))
 
         if log_prev:
-            LOGGER.info("Updated %s record id %s with %s (prev %s)",
+            LOGGER.info("Updated '%s' record id %s with %s (prev %s)",
                         self._table_name, record_id, fields,
                         {k : v for k, v in prev_record.items()
                         if k in fields})
         else:
-            LOGGER.info("Updated %s record id %s with %s",
+            LOGGER.info("Updated '%s' record id %s with %s",
                         self._table_name, record_id, fields)
 
     def create(self, fields):
@@ -381,18 +382,18 @@ class Table:
         # Returns the record ID
         record_id = self._db.insert(self._table_name, fields)
 
-        LOGGER.info("Created %s record id %s with %s",
+        LOGGER.info("Created '%s' record id %s with %s",
                     self._table_name, record_id, fields)
         return record_id
 
     def delete_record(self, record_id):
-        LOGGER.info("Deleting %s record id %s",
+        LOGGER.info("Deleting '%s' record id %s",
                     self._table_name, record_id)
         self._db.delete(self._table_name,
                         {UNIQUE_ID : record_id})
 
     def delete_record_by_field(self, field_name, field_val):
-        LOGGER.info("Deleting %s record with %s val '%s'",
+        LOGGER.info("Deleting '%s' record with %s val '%s'",
                     self._table_name, field_name, field_val)
         self._db.delete(self._table_name,
                         {field_name : field_val})
