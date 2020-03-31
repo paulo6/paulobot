@@ -147,6 +147,8 @@ class Handler(object):
         # Set the command type
         sub_cmds = self._set_cmd_type(msg)
         handler_class = self._handlers[msg.cmd_type]
+        if handler_class is None:
+            raise CommandError("This is not implemented yet")
 
         # Sanitize command
         msg.cmd = common.safe_string(msg.cmd)

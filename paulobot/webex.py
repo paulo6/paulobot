@@ -107,6 +107,10 @@ class Client(object):
                 self._on_message(message)
 
     def _handle_add(self, activity):
+        # Only care about adds in groups for now, which can be detected by
+        # looking for email.
+        if "emailAddress" not in activity["object"]:
+            return
         email = activity["object"]["emailAddress"]
         room = self.call_api(True, self.api.rooms.get, activity['target']['id'])
 
@@ -118,6 +122,10 @@ class Client(object):
                                None if email in self.my_emails else email)
 
     def _handle_leave(self, activity):
+        # Only care about adds in groups for now, which can be detected by
+        # looking for email.
+        if "emailAddress" not in activity["object"]:
+            return
         room = None
         email = activity["object"]["emailAddress"]
 
@@ -193,7 +201,7 @@ class Client(object):
                     LOGGER.debug("Received raw data: %s", data)
                     try:
                         msg = json.loads(data)
-                        loop = asyncio.get_running_loop()
+                        loop = asyncio.get_event_loop()
                         await loop.run_in_executor(None, self._process_message, msg)
                     except:
                         LOGGER.exception("Exception occurred while processing message...")
