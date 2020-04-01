@@ -657,9 +657,6 @@ class GameManager:
     # Private Utils
     # --------------------------------------------------
     def _save_game(self, game):
-        if self._restore_in_progress:
-            return
-
         rec = {
             'sport':        self._sport.name,
             'gtime':        game.gtime.val,
@@ -772,9 +769,15 @@ class GameManager:
             old_games = [g for g in self._games[check_old_gtime]
                          if g.state is State.NotQuorate]
             if old_games:
-                self._games[GTIME_NOW].extend(old_games)
+                if GTIME_NOW in self._games:
+                    self._games[GTIME_NOW].extend(old_games)
+                else:
+                    self._games[GTIME_NOW] = old_games
                 for game in old_games:
                     game.gtime = GTIME_NOW
+                    
+                    # Need to save the game now we have changed the time.
+                    self._save_game(game)
 
                 # Remove time entry from list if we moved all
                 # the games
@@ -805,7 +808,9 @@ class GameManager:
 
         # If there a multiple games for the combine game time, then see whether
         # they can be combined.
-        if combine_gtime is not None and len(self._games[combine_gtime]) > 1:
+        if (combine_gtime is not None and
+            combine_gtime in self._games and
+            len(self._games[combine_gtime]) > 1):
             self._sport.announce(
                 f"Checking to see if any players can be promoted for games for {combine_gtime}...")
 
