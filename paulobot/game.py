@@ -150,6 +150,7 @@ class Game:
     def __init__(self, pb, sport, game_manager, gtime):
         self.sport = sport
         self.gtime = gtime
+        self.model = GameModel(pb, self)
 
         self.created_time = datetime.datetime.now()
         self.quorate_time = None
@@ -160,16 +161,13 @@ class Game:
         # Need to use a list for players because sign up order is important.
         self._players = PlayerList(sport=sport)
         self._not_ready_players = set()
-        self._max_players = sport.max_players
         self._hold_info = None
         self._in_area_queue = False
         self._flexible_ready = False
         self._game_manager = game_manager
         self._pb = pb
-        self._timeout_fire_time = None
 
     def __repr__(self):
-        # pylint: disable=no-member
         return f"<Game({self.sport.name}, {self.gtime}, {self.state})>"
 
     # --------------------------------------------------
@@ -177,8 +175,7 @@ class Game:
     # --------------------------------------------------
     @property
     def has_space(self):
-        return (not self.flexible_ready and
-                (self._max_players == 0 or len(self._players) < self._max_players))
+        return self.spaces_left is None or self.spaces_left > 0
 
     @property
     def has_players(self):
@@ -205,9 +202,20 @@ class Game:
     # Other properties
     # --------------------------------------------------
     @property
+    def state(self):
+        return self.model.state # pylint: disable=no-member
+
+    @property
     def spaces_left(self):
-        return (0 if (self.sport.max_players == 0 or self.flexible_ready)
-                  else self._max_players - len(self._players))
+        # If flexible ready, then no spaces left
+        if self.flexible_ready:
+            return 0
+
+        # Max plaers of 0 means infinite spaces!
+        if self.sport.max_players == 0:
+            return None
+
+        return self.sport.max_players - len(self._players)
 
     @property
     def players(self):
@@ -219,9 +227,9 @@ class Game:
 
     @property
     def idle_secs_left(self):
-        if self._timeout_fire_time is None:
+        if self.model.timeout_fire_time is None:
             return None
-        return (self._timeout_fire_time - datetime.datetime.now()).seconds
+        return (self.model.timeout_fire_time - datetime.datetime.now()).seconds
 
     @property
     def pretty(self):
@@ -289,7 +297,7 @@ class Game:
 
         if changed:
             self._flexible_ready = flexible_ready
-            self.trigger(Trigger.PlayerAdded) # pylint: disable=no-member
+            self.trigger(Trigger.PlayerAdded)
 
     def remove_player(self, player):
         self.remove_players((player,))
@@ -302,20 +310,61 @@ class Game:
             changed = True
 
         if changed:
-            self.trigger(Trigger.PlayerRemoved) # pylint: disable=no-member
+            self.trigger(Trigger.PlayerRemoved)
 
     def add_hold(self, player, reason):
         self._hold_info = (player, reason)
-        self.trigger(Trigger.HoldAdded) # pylint: disable=no-member
+        self.trigger(Trigger.HoldAdded)
 
     def remove_hold(self):
         if self._hold_info is not None:
             self._hold_info = None
-            self.trigger(Trigger.HoldRemoved) # pylint: disable=no-member
+            self.trigger(Trigger.HoldRemoved)
 
     def player_is_ready(self, player):
         self._not_ready_players.remove(player)
-        self.trigger(Trigger.PlayerReady) # pylint: disable=no-member
+        self.trigger(Trigger.PlayerReady)
+
+    def trigger(self, trigger):
+        self.model.trigger(trigger) # pylint: disable=no-member
+
+
+class GameModel:
+    def __init__(self, pb, game):
+        self.g = game
+        self.timeout_fire_time = None
+        self._pb = pb
+
+    def __repr__(self):
+        # pylint: disable=no-member
+        return f"<_GameModel({self.g.sport.name}, {self.g.gtime}, {self.g.state})>"
+
+    # --------------------------------------------------
+    # Properties used by state machine
+    # --------------------------------------------------
+    @property
+    def has_space(self):
+        return self.g.has_space
+
+    @property
+    def has_players(self):
+        return self.g.has_players
+
+    @property
+    def is_future_game(self):
+        return self.g.is_future_game
+
+    @property
+    def is_held(self):
+        return self.g.is_held
+
+    @property
+    def is_area_busy(self):
+        return self.g.is_area_busy
+
+    @property
+    def are_players_ready(self):
+        return self.g.are_players_ready
 
     # --------------------------------------------------
     # State machine callbacks - should *not* be called
@@ -323,35 +372,35 @@ class Game:
     # --------------------------------------------------
     def on_enter_NotQuorate(self, event):
         # Whenever we enter NotQuorate, reset flexi ready and quorate time
-        self._flexible_ready = False
-        self.quorate_time = None
+        self.g._flexible_ready = False
+        self.g.quorate_time = None
 
     def on_enter_Quorate(self, event):
         # Whenever we enter quorate state, try to roll
-        self.quorate_time = datetime.datetime.now()
+        self.g.quorate_time = datetime.datetime.now()
         self.trigger(Trigger.Roll) # pylint: disable=no-member
 
     def on_enter_Rolling(self, event):
-        self.rolled_time = datetime.datetime.now()
+        self.g.rolled_time = datetime.datetime.now()
 
     def on_exit_Rolling(self, event):
         raise StateException("Can't leave rolling state")
 
     def on_enter_WaitingForArea(self, event):
-        self.sport.area.add_to_queue(self)
+        self.g.sport.area.add_to_queue(self)
 
     def on_exit_WaitingForArea(self, event):
         # If we leave waiting for area and do not go to
         # player check, then remove from queue
         if _event_dest_is_state(event, State.PlayerCheck):
-            self.sport.area.remove_from_queue(self)
+            self.g.sport.area.remove_from_queue(self)
 
     def on_enter_PlayerCheck(self, event):
         # First check whether any players are in another rolled game.
         # If so don't do anything else, and let the game manager remove
         # them.
-        self._not_ready_players = {
-            p for p in self._players if p.user.is_currently_rolled
+        self.g._not_ready_players = {
+            p for p in self.g._players if p.user.is_currently_rolled
         }
 
         # If there are no clashed players, then count ourselves as rolling
@@ -363,8 +412,8 @@ class Game:
             # players.
             #
             # The game manager will take care of messaging players.
-            self.sport.area.add_to_rolling(self)
-            self._not_ready_players = {p for p in self._players if p.user.is_idle}
+            self.g.sport.area.add_to_rolling(self)
+            self.g._not_ready_players = {p for p in self.g._players if p.user.is_idle}
 
             if self.are_players_ready:
                 # Players are ready!
@@ -376,7 +425,7 @@ class Game:
         # Clear not ready players set if not heading to PlayersNotReady.
         # We need the not ready player list in PlayersNotReady
         if not _event_dest_is_state(event, State.PlayersNotReady):
-            self._not_ready_players.clear()
+            self.g._not_ready_players.clear()
 
         # Ideally we'd just remove ourselves from the rolling list if we
         # aren't head to rolling. However this could trigger
@@ -395,26 +444,27 @@ class Game:
         # rolling when we head to PlayersNotReady
         if (not _event_dest_is_state(event, State.Rolling) and
             not _event_dest_is_state(event, State.PlayersNotReady)):
-            self.sport.area.remove_from_rolling(self)
+            self.g.sport.area.remove_from_rolling(self)
 
         self._stop_timeout_timer()
 
     def on_exit_PlayersNotReady(self, event):
-        self._not_ready_players.clear()
+        self.g._not_ready_players.clear()
+
 
     # --------------------------------------------------
     # Private methods
     # --------------------------------------------------
     def _start_timeout_timer(self):
-        self._timeout_fire_time = (datetime.datetime.now() +
+        self.timeout_fire_time = (datetime.datetime.now() +
                     datetime.timedelta(0, self._pb.config.ready_timeout))
-        self._pb.timer.schedule_at(self._timeout_fire_time,
+        self._pb.timer.schedule_at(self.timeout_fire_time,
                                    self._timeout_timer_cb)
 
     def _stop_timeout_timer(self):
         if self._pb.timer.is_scheduled(self._timeout_timer_cb):
             self._pb.timer.cancel(self._timeout_timer_cb)
-        self._timeout_fire_time = None
+        self.timeout_fire_time = None
 
     def _timeout_timer_cb(self):
         self.trigger(Trigger.TimerFired) # pylint: disable=no-member
@@ -548,12 +598,12 @@ class GameManager:
     # --------------------------------------------------
     def _finalize_event(self, event):
         # Save the rest of the code from having to do this
-        game = event.model
+        game = event.model.g
 
         # First do any custom state handling before announcing
         announce_game = True
         if game.state in self._game_state_handlers:
-            announce_game = self._game_state_handlers[game.state](event)
+            announce_game = self._game_state_handlers[game.state](game, event)
 
         # If the game state is empty, it has now been deleted from the
         # games dict, so stop.
@@ -593,37 +643,37 @@ class GameManager:
             game.state is not State.Empty):
             self._save_game(game)
 
-    def _event_game_state_empty(self, event):
-        self._delete_game(event.model)
+    def _event_game_state_empty(self, game, event):
+        self._delete_game(game)
         # Don't announce deletes if this is during a reorg, as we may be
         # moving a game into its place.
         if not self._reorg_in_progress:
-            self._sport.announce(f"Game for {event.model.gtime} removed!")
+            self._sport.announce(f"Game for {game.gtime} removed!")
         return False
 
-    def _event_game_state_rolling(self, event):
+    def _event_game_state_rolling(self, game, event):
         # Announce ASAP!
-        self._announce_game(event.model)
+        self._announce_game(game)
 
         game_text = event.model.pretty_for_direct
         for player in event.model.players:
             player.user.send_msg(game_text)
 
-        self._delete_game(event.model)
-        self._sport.area.game_rolled(event.model, None) # @@@ RESULT
+        self._delete_game(game)
+        self._sport.area.game_rolled(game, None) # @@@ RESULT
         return False
 
-    def _event_game_state_player_check(self, event):
+    def _event_game_state_player_check(self, game, event):
         # By default announce each time we hit this state
         announce = True
 
         # First check for any players in other games
-        clashed = PlayerList(p for p in event.model.not_ready_players
+        clashed = PlayerList(p for p in game.not_ready_players
                             if p.user.is_currently_rolled)
         if clashed:
             self._sport.announce(
                 f"Unreg {clashed} as they are currently playing another game.")
-            event.model.remove_players(clashed)
+            game.remove_players(clashed)
 
             # Don't announce the game as it'll be announced when the PlayerRemoved
             # event occurs
@@ -633,23 +683,23 @@ class GameManager:
         elif not _event_source_is_state(event, State.PlayerCheck):
             text = template.PLAYER_IDLE.format(
                         sport=self._sport.name,
-                        time=event.model.gtime,
+                        time=game.gtime,
                         room=self._sport.location.room.title,
-                        secs=event.model.idle_secs_left)
-            for player in event.model.not_ready_players:
+                        secs=game.idle_secs_left)
+            for player in game.not_ready_players:
                 player.user.send_msg(text)
 
             # Don't announce when we enter this state if everyone
             # is good
-            announce = not event.model.are_players_ready
+            announce = not game.are_players_ready
 
         return announce
 
-    def _event_game_state_players_not_ready(self, event):
+    def _event_game_state_players_not_ready(self, game, event):
         # Remove the idle players
-        idlers = event.model.not_ready_players
+        idlers = game.not_ready_players
         self._sport.announce(f"Unreg {idlers} due to idleness")
-        event.model.remove_players(idlers)
+        game.remove_players(idlers)
 
         # The removal of players will trigger an announce
         return False
@@ -716,7 +766,7 @@ class GameManager:
         if not restore and not gtime.is_for_now and gtime < datetime.datetime.now():
             raise BadAction("Cannot start a game in the past!")
         game = Game(self._pb, self._sport, self, gtime)
-        self._machine.add_model(game)
+        self._machine.add_model(game.model)
         new_time = gtime not in self._games
         if new_time:
             self._games[gtime] = [game]
@@ -730,7 +780,7 @@ class GameManager:
         return game
 
     def _delete_game(self, game):
-        self._machine.remove_model(game)
+        self._machine.remove_model(game.model)
         self._games[game.gtime].remove(game)
         if len(self._games[game.gtime]) == 0:
             del self._games[game.gtime]
