@@ -69,53 +69,53 @@ class TestFSM:
         assert game.state == State.Empty
 
         # Test: Empty -> Empty
-        game.trigger(Trigger.PlayerAdded)
+        game.trigger(Trigger.AddPlayers)
         assert game.state == State.Empty
 
         # Test: Empty -> NotQuorate (has players)
         game.p_has_players = True
-        game.trigger(Trigger.PlayerAdded)
+        game.trigger(Trigger.AddPlayers)
         assert game.state == State.NotQuorate
 
         # Test: NotQuorate -> Quorate (no space)
         game.p_has_space = False
-        game.trigger(Trigger.PlayerAdded)
+        game.trigger(Trigger.AddPlayers)
         assert game.state == State.Quorate
 
         # Test: Empty -> Quorate (no space)
         game.state = State.Empty
         game.p_has_space = False
-        game.trigger(Trigger.PlayerAdded)
+        game.trigger(Trigger.AddPlayers)
         assert game.state == State.Quorate
 
     def test_event_player_remove(self, game):
         assert game.state == State.Empty
 
         # Test: Empty -> Empty
-        game.trigger(Trigger.PlayerRemoved)
+        game.trigger(Trigger.RemovePlayers)
         assert game.state == State.Empty
 
         # Test: NotQuorate -> Empty
         game.state = State.NotQuorate
-        game.trigger(Trigger.PlayerRemoved)
+        game.trigger(Trigger.RemovePlayers)
         assert game.state == State.Empty
 
         # Test: NotQuorate -> NotQuorate
         game.p_has_players = True
         game.state = State.NotQuorate
-        game.trigger(Trigger.PlayerRemoved)
+        game.trigger(Trigger.RemovePlayers)
         assert game.state == State.NotQuorate
 
         # Test: Quorate -> NotQurate
         game.state = State.Quorate
         game.p_has_space = True
-        game.trigger(Trigger.PlayerRemoved)
+        game.trigger(Trigger.RemovePlayers)
         assert game.state == State.NotQuorate
 
         # Test: PlayerCheck -> NoNotQuorate
         game.state = State.PlayerCheck
         game.p_has_space = True
-        game.trigger(Trigger.PlayerRemoved)
+        game.trigger(Trigger.RemovePlayers)
         assert game.state == State.NotQuorate
 
     def test_event_roll(self, game):
@@ -161,7 +161,7 @@ class TestFSM:
         # Should advance to PlayerCheck when
         # condition clears
         game.p_is_held = False
-        game.trigger(Trigger.HoldRemoved)
+        game.trigger(Trigger.RemoveHold)
         assert game.state == State.PlayerCheck
 
         # Reset, and make sure it takes precedence
@@ -175,7 +175,7 @@ class TestFSM:
         # Should return to quorate as there are other
         # issues
         game.p_is_held = False
-        game.trigger(Trigger.HoldRemoved)
+        game.trigger(Trigger.RemoveHold)
         assert game.state == State.Quorate
 
     def test_state_waiting_for_area(self, game):

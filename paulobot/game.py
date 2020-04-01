@@ -13,12 +13,12 @@ from paulobot.database import FieldType
 
 
 class Trigger:
-    PlayerAdded   = "_trig_player_added"
-    PlayerRemoved = "_trig_player_removed"
+    AddPlayers    = "_trig_add_players"
+    RemovePlayers = "_trig_remove_players"
     TimerFired    = "_trig_timer_fired"
     AreaReady     = "_trig_area_ready"
-    HoldAdded     = "_trig_hold_added"
-    HoldRemoved   = "_trig_hold_removed"
+    AddHold       = "_trig_add_hold"
+    RemoveHold    = "_trig_remove_hold"
     PlayerReady   = "_trig_player_ready"
     Roll          = "_trig_roll"
 
@@ -34,47 +34,47 @@ DB_FIELDS = {
     "sport":        FieldType.TEXT,
     "gtime":        FieldType.DATETIME,
     "created_time": FieldType.DATETIME,
-    "quorate_time":   FieldType.DATETIME,
+    "quorate_time": FieldType.DATETIME,
     "data":         FieldType.JSON,
 }
 
 GAME_TRANSITIONS = [
     # Player added transitions
     {
-        'trigger': Trigger.PlayerAdded,   'source': State.Empty,      'dest': State.NotQuorate,
+        'trigger': Trigger.AddPlayers,   'source': State.Empty,      'dest': State.NotQuorate,
         'conditions': ['has_players', "has_space"]
     },
     {
-        'trigger': Trigger.PlayerAdded,   'source': State.NotQuorate, 'dest': State.NotQuorate,
+        'trigger': Trigger.AddPlayers,   'source': State.NotQuorate, 'dest': State.NotQuorate,
         'conditions': ['has_space']
     },
     {
-        'trigger': Trigger.PlayerAdded,   'source': [State.Empty, State.NotQuorate], 'dest': State.Quorate,
+        'trigger': Trigger.AddPlayers,   'source': [State.Empty, State.NotQuorate], 'dest': State.Quorate,
         'unless': ['has_space']
     },
 
     # Player removed transitions
     {
-        'trigger': Trigger.PlayerRemoved, 'source': '*',              'dest': State.NotQuorate,
-        'conditions': ['has_players', 'has_space'] # Make sure we only change state if there is space
+        'trigger': Trigger.RemovePlayers, 'source': '*',              'dest': State.NotQuorate,
+        'conditions': ['has_players', 'has_space'], # Make sure we only change state if there is space
     },
     {
-        'trigger': Trigger.PlayerRemoved, 'source': '*',              'dest': State.Empty,
+        'trigger': Trigger.RemovePlayers, 'source': '*',              'dest': State.Empty,
         'unless': ['has_players']
     },
 
     # Hold transitions - hold can be applied in any state
     {
-        'trigger': Trigger.HoldAdded,     'source': State.NotQuorate,            'dest': State.NotQuorate,
+        'trigger': Trigger.AddHold,     'source': State.NotQuorate,            'dest': State.NotQuorate,
     },
     {
-        'trigger': Trigger.HoldAdded,     'source': State.WaitingForTime,        'dest': State.WaitingForTime,
+        'trigger': Trigger.AddHold,     'source': State.WaitingForTime,        'dest': State.WaitingForTime,
     },
     {
-        'trigger': Trigger.HoldAdded,     'source': State.WaitingForArea,        'dest': State.WaitingForHold,
+        'trigger': Trigger.AddHold,     'source': State.WaitingForArea,        'dest': State.WaitingForHold,
     },
     {
-        'trigger': Trigger.HoldAdded,     'source': State.PlayerCheck,           'dest': State.WaitingForHold,
+        'trigger': Trigger.AddHold,     'source': State.PlayerCheck,           'dest': State.WaitingForHold,
     },
 
     # Roll transitions - see whether we can go to PlayerCheck or whether we need to wait for an event
@@ -110,11 +110,11 @@ GAME_TRANSITIONS = [
     },
 
     {
-        'trigger': Trigger.HoldRemoved,   'source': State.WaitingForHold,       'dest': State.PlayerCheck,
+        'trigger': Trigger.RemoveHold,   'source': State.WaitingForHold,       'dest': State.PlayerCheck,
         'unless': PLAYER_CHECK_BLOCKERS,
     },
     {
-        'trigger': Trigger.HoldRemoved,   'source': State.WaitingForHold,       'dest': State.Quorate,
+        'trigger': Trigger.RemoveHold,   'source': State.WaitingForHold,       'dest': State.Quorate,
     },
 
     {
@@ -158,12 +158,6 @@ class Game:
 
         self.db_id = None
 
-        # Need to use a list for players because sign up order is important.
-        self._players = PlayerList(sport=sport)
-        self._not_ready_players = set()
-        self._hold_info = None
-        self._in_area_queue = False
-        self._flexible_ready = False
         self._game_manager = game_manager
         self._pb = pb
 
@@ -171,59 +165,47 @@ class Game:
         return f"<Game({self.sport.name}, {self.gtime}, {self.state})>"
 
     # --------------------------------------------------
-    # Properties used by state machine
+    # Properties
     # --------------------------------------------------
     @property
     def has_space(self):
-        return self.spaces_left is None or self.spaces_left > 0
+        return self.model.has_space
 
     @property
     def has_players(self):
-        return len(self._players) > 0
+        return self.model.has_players
 
     @property
     def is_future_game(self):
-        return self.gtime is not None and self.gtime > datetime.datetime.now()
+        return self.model.is_future_game
 
     @property
     def is_held(self):
-        return self._hold_info is not None
+        return self.model.is_held
 
     @property
     def is_area_busy(self):
-        return self.sport.area.is_busy(self)
+        return self.model.is_area_busy
 
     @property
     def are_players_ready(self):
-        return len(self._not_ready_players) == 0
+        return self.model.are_players_ready
 
-
-    # --------------------------------------------------
-    # Other properties
-    # --------------------------------------------------
     @property
     def state(self):
         return self.model.state # pylint: disable=no-member
 
     @property
     def spaces_left(self):
-        # If flexible ready, then no spaces left
-        if self.flexible_ready:
-            return 0
-
-        # Max plaers of 0 means infinite spaces!
-        if self.sport.max_players == 0:
-            return None
-
-        return self.sport.max_players - len(self._players)
+        return self.model.spaces_left
 
     @property
     def players(self):
-        return self._players
+        return self.model._players
 
     @property
     def not_ready_players(self):
-        return PlayerList(self._not_ready_players)
+        return PlayerList(self.model._not_ready_players)
 
     @property
     def idle_secs_left(self):
@@ -253,22 +235,20 @@ class Game:
 
     @property
     def held_by(self):
-        return self._hold_info[0] if self._hold_info else None
+        return self.model._hold_info[0] if self.model._hold_info else None
 
     @property
     def flexible_ready(self):
-        return self._flexible_ready
+        return self.model._flexible_ready
 
     @flexible_ready.setter
     def flexible_ready(self, val):
         if not self.sport.is_flexible:
             raise Exception("Cannot set flexible_ready for a non-flexible game")
-        if val and not self._flexible_ready:
-            self._flexible_ready = True
-            self.trigger(Trigger.PlayerAdded) # pylint: disable=no-member
-        if not val and self._flexible_ready:
-            self._flexible_ready = False
-            self.trigger(Trigger.PlayerRemoved) # pylint: disable=no-member
+        if val and not self.flexible_ready:
+            self.trigger(Trigger.AddPlayers, flexible_ready=val)
+        if not val and self.flexible_ready:
+            self.trigger(Trigger.RemovePlayers, flexible_ready=val)
 
     @property
     def time_index(self):
@@ -286,54 +266,42 @@ class Game:
         self.add_players((player,))
 
     def add_players(self, players, flexible_ready=False):
-        if flexible_ready and not self.sport.is_flexible:
-            raise Exception("Cannot set flexible_ready for a non-flexible game")
-        changed = False
-        for player in (p for p in players if p not in self._players):
-            if self.has_space:
-                self._players.append(player)
-                player.user.in_games.append(self)
-                changed = True
-
-        if changed:
-            self._flexible_ready = flexible_ready
-            self.trigger(Trigger.PlayerAdded)
+        self.trigger(Trigger.AddPlayers,
+                     players=players,
+                     flexible_ready=flexible_ready)
 
     def remove_player(self, player):
         self.remove_players((player,))
 
     def remove_players(self, players):
-        changed = False
-        for player in (p for p in players if p in self._players):
-            self._players.remove(player)
-            player.user.in_games.remove(self)
-            changed = True
-
-        if changed:
-            self.trigger(Trigger.PlayerRemoved)
+        self.trigger(Trigger.RemovePlayers,
+                     players=players)
 
     def add_hold(self, player, reason):
-        self._hold_info = (player, reason)
-        self.trigger(Trigger.HoldAdded)
+        self.trigger(Trigger.AddHold, player=player)
 
     def remove_hold(self):
-        if self._hold_info is not None:
-            self._hold_info = None
-            self.trigger(Trigger.HoldRemoved)
+        self.trigger(Trigger.RemoveHold)
 
     def player_is_ready(self, player):
-        self._not_ready_players.remove(player)
+        self.model._not_ready_players.remove(player)
         self.trigger(Trigger.PlayerReady)
 
-    def trigger(self, trigger):
-        self.model.trigger(trigger) # pylint: disable=no-member
+    def trigger(self, trigger, *args, **kwargs):
+        self.model.trigger(trigger, *args, **kwargs) # pylint: disable=no-member
 
 
 class GameModel:
     def __init__(self, pb, game):
         self.g = game
         self.timeout_fire_time = None
+        self.flexible_ready = False
         self._pb = pb
+        # Need to use a list for players because sign up order is important.
+        self._players = PlayerList(sport=game.sport)
+        self._not_ready_players = set()
+        self._hold_info = None
+        self._in_area_queue = False
 
     def __repr__(self):
         # pylint: disable=no-member
@@ -344,27 +312,72 @@ class GameModel:
     # --------------------------------------------------
     @property
     def has_space(self):
-        return self.g.has_space
+        return self.spaces_left is None or self.spaces_left > 0
 
     @property
     def has_players(self):
-        return self.g.has_players
+        return len(self._players) > 0
 
     @property
     def is_future_game(self):
-        return self.g.is_future_game
+        return self.g.gtime is not None and self.g.gtime > datetime.datetime.now()
 
     @property
     def is_held(self):
-        return self.g.is_held
+        return self._hold_info is not None
 
     @property
     def is_area_busy(self):
-        return self.g.is_area_busy
+        return self.g.sport.area.is_busy(self)
 
     @property
     def are_players_ready(self):
-        return self.g.are_players_ready
+        return len(self._not_ready_players) == 0
+
+    @property
+    def spaces_left(self):
+        # If flexible ready, then no spaces left
+        if self.flexible_ready:
+            return 0
+
+        # Max plaers of 0 means infinite spaces!
+        if self.g.sport.max_players == 0:
+            return None
+
+        return self.g.sport.max_players - len(self._players)
+
+    # --------------------------------------------------
+    # State machine prepare functions
+    # --------------------------------------------------
+    def prepare(self, event):
+        if event.event.name == Trigger.AddPlayers:
+            players = event.kwargs.get('players', [])
+            flexible_ready = event.kwargs.get('flexible_ready', False)
+            if flexible_ready and not self.g.sport.is_flexible:
+                raise Exception("Cannot set flexible_ready for a non-flexible game")
+            changed = False
+            for player in (p for p in players if p not in self._players):
+                if self.has_space:
+                    self._players.append(player)
+                    player.user.in_games.append(self.g)
+                    changed = True
+
+            if changed:
+                self._flexible_ready = flexible_ready
+
+        elif event.event.name == Trigger.RemovePlayers:
+            players = event.kwargs.get('players', [])
+            flexible_ready = event.kwargs.get('flexible_ready', False)
+            for player in (p for p in players if p in self._players):
+                self._players.remove(player)
+                player.user.in_games.remove(self.g)
+            self._flexible_ready = flexible_ready
+
+        elif event.event.name == Trigger.AddHold:
+            self._hold_info = (event.kwargs['player'], None)
+
+        elif event.event.name == Trigger.RemoveHold:
+            self._hold_info = None
 
     # --------------------------------------------------
     # State machine callbacks - should *not* be called
@@ -372,7 +385,7 @@ class GameModel:
     # --------------------------------------------------
     def on_enter_NotQuorate(self, event):
         # Whenever we enter NotQuorate, reset flexi ready and quorate time
-        self.g._flexible_ready = False
+        self._flexible_ready = False
         self.g.quorate_time = None
 
     def on_enter_Quorate(self, event):
@@ -399,8 +412,8 @@ class GameModel:
         # First check whether any players are in another rolled game.
         # If so don't do anything else, and let the game manager remove
         # them.
-        self.g._not_ready_players = {
-            p for p in self.g._players if p.user.is_currently_rolled
+        self._not_ready_players = {
+            p for p in self._players if p.user.is_currently_rolled
         }
 
         # If there are no clashed players, then count ourselves as rolling
@@ -413,7 +426,7 @@ class GameModel:
             #
             # The game manager will take care of messaging players.
             self.g.sport.area.add_to_rolling(self)
-            self.g._not_ready_players = {p for p in self.g._players if p.user.is_idle}
+            self._not_ready_players = {p for p in self._players if p.user.is_idle}
 
             if self.are_players_ready:
                 # Players are ready!
@@ -425,7 +438,7 @@ class GameModel:
         # Clear not ready players set if not heading to PlayersNotReady.
         # We need the not ready player list in PlayersNotReady
         if not _event_dest_is_state(event, State.PlayersNotReady):
-            self.g._not_ready_players.clear()
+            self._not_ready_players.clear()
 
         # Ideally we'd just remove ourselves from the rolling list if we
         # aren't head to rolling. However this could trigger
@@ -449,7 +462,7 @@ class GameModel:
         self._stop_timeout_timer()
 
     def on_exit_PlayersNotReady(self, event):
-        self.g._not_ready_players.clear()
+        self._not_ready_players.clear()
 
 
     # --------------------------------------------------
@@ -492,11 +505,12 @@ class GameManager:
                                             initial=State.Empty,
                                             transitions=GAME_TRANSITIONS,
                                             send_event=True, queued=True,
-                                            finalize_event=self._finalize_event)
+                                            finalize_event=self._finalize_event,
+                                            prepare_event=lambda e: e.model.prepare)
 
         self._game_state_handlers = {
             State.Empty: self._event_game_state_empty,
-            State.Quorate: lambda e: False, # Don't announce quorate it's a transient state
+            State.Quorate: lambda g, e: False, # Don't announce quorate it's a transient state
             State.PlayerCheck: self._event_game_state_player_check,
             State.PlayersNotReady: self._event_game_state_players_not_ready,
             State.Rolling: self._event_game_state_rolling,
@@ -622,7 +636,7 @@ class GameManager:
         # in from other games for this time
         if game.state is State.NotQuorate:
             self._move_old_games(game.gtime)
-        elif event.event.name == Trigger.PlayerRemoved:
+        elif event.event.name == Trigger.RemovePlayers:
             self._combine_games(game.gtime)
 
         # After we have done the announcing and re-orging, remove ourselves
@@ -636,10 +650,10 @@ class GameManager:
             self._sport.area.remove_from_rolling(game)
 
         # Update DB on events that change record fields
-        if (event.event.name in (Trigger.PlayerAdded,
-                                 Trigger.PlayerRemoved,
-                                 Trigger.HoldAdded,
-                                 Trigger.HoldRemoved) and
+        if (event.event.name in (Trigger.AddPlayers,
+                                 Trigger.RemovePlayers,
+                                 Trigger.AddHold,
+                                 Trigger.RemoveHold) and
             game.state is not State.Empty):
             self._save_game(game)
 
@@ -655,8 +669,8 @@ class GameManager:
         # Announce ASAP!
         self._announce_game(game)
 
-        game_text = event.model.pretty_for_direct
-        for player in event.model.players:
+        game_text = game.pretty_for_direct
+        for player in game.players:
             player.user.send_msg(game_text)
 
         self._delete_game(game)
@@ -675,7 +689,7 @@ class GameManager:
                 f"Unreg {clashed} as they are currently playing another game.")
             game.remove_players(clashed)
 
-            # Don't announce the game as it'll be announced when the PlayerRemoved
+            # Don't announce the game as it'll be announced when the RemovePlayers
             # event occurs
             announce = False
 
