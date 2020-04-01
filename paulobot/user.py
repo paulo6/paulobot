@@ -119,7 +119,9 @@ class UserManager:
         return user
 
     def restore_from_db(self):
-        for rec in self._table.find_all():
+        recs = self._table.find_all()
+        LOGGER.info("Restoring %s users from DB", len(recs))
+        for rec in recs:
             user = self._create_user(email=rec["email"],
                                      full_name=rec["data"]["full_name"],
                                      first_name=rec["data"]["first_name"])
@@ -131,7 +133,7 @@ class UserManager:
                         for l in rec["data"]["locations"]):
                 loc.add_user(user)
             self._pb.loc_manager.add_user_to_locations(user)
-        LOGGER.info("Restored %s users from DB", len(self._users))
+        LOGGER.info("Restore complete!")
 
     def _create_user(self, email, full_name, first_name):
         if email in self._users:

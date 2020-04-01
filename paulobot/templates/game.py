@@ -22,7 +22,7 @@ def game_string(game, no_tags=False):
     time = str(game.gtime)
     time_index = game.time_index
     if time_index > 0:
-        time += f" <{time_index + 1}>"
+        time += f"<{time_index + 1}>"
     now = datetime.datetime.now()
     if game.created_time.date() != now.date():
         time += ' (created {})'.format(str(game.created_time).split(".")[0])

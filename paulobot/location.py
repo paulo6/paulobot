@@ -126,10 +126,11 @@ class Location:
     def restore_from_db(self):
         recs = sorted(self.game_table.find_all(),
                           key=paulobot.game.db_rec_time_key)
+        LOGGER.info("Restoring %s games for location '%s' from DB",
+                    len(recs), self.name)
         for rec in recs:
             self.sports[rec['sport']].restore_game(rec)
-        LOGGER.info("Restored %s games for location '%s' from DB",
-                    len(recs), self.name)
+        LOGGER.info("Restore complete!")
 
 
 class LocationManager:
