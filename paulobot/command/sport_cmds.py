@@ -119,7 +119,7 @@ class ClassHandler(defs.ClassHandlerInterface):
         else:
             text = MD_LINE_SPLIT.join(self.prefix_string(msg, g.pretty)
                                       for g in msg.sport.games)
-        if msg.sport.area.is_none:
+        if msg.sport.area.is_null:
             msg.reply(template.SPORT_STATUS_NO_AREA.format(
                 sport=msg.sport.name.upper(),
                 games=text,

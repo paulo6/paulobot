@@ -172,7 +172,6 @@ class Game:
         # pylint: disable=no-member
         return f"<Game({self.sport.name}, {self.gtime}, {self.state})>"
 
-
     # --------------------------------------------------
     # Properties used by state machine
     # --------------------------------------------------
@@ -453,7 +452,10 @@ class GameManager:
             State.Rolling: self._event_game_state_rolling,
         }
 
-        self._games = collections.defaultdict(list)
+        # Dictionary of gtime -> list of games.
+        # Don't use a defaultdict, to avoid bugs where code looks up
+        # a gtime that isn't present and ends up adding an empty list.
+        self._games = {}
         self._reorg_in_progress = False
         self._restore_in_progress = False
 
@@ -553,6 +555,11 @@ class GameManager:
         if game.state in self._game_state_handlers:
             announce_game = self._game_state_handlers[game.state](event)
 
+        # If the game state is empty, it has now been deleted from the
+        # games dict, so stop.
+        if game.state is State.Empty:
+            return
+
         # Announce the game if a handler hasn't already
         if announce_game:
             self._announce_game(game)
@@ -579,9 +586,9 @@ class GameManager:
 
         # Update DB on events that change record fields
         if (event.event.name in (Trigger.PlayerAdded,
-                                Trigger.PlayerRemoved,
-                                Trigger.HoldAdded,
-                                Trigger.HoldRemoved) and
+                                 Trigger.PlayerRemoved,
+                                 Trigger.HoldAdded,
+                                 Trigger.HoldRemoved) and
             game.state is not State.Empty):
             self._save_game(game)
 
@@ -660,9 +667,10 @@ class GameManager:
             'quorate_time': game.quorate_time,
             'data': {
                 'players': [p.user.email for p in game.players],
-                'flexible_ready': game.flexible_ready,
             }
         }
+        if game.sport.is_flexible:
+            rec['data']['flexible_ready'] = game.flexible_ready
         if game.db_id is None:
             game.db_id = self._sport.location.game_table.create(rec)
         else:
@@ -712,7 +720,10 @@ class GameManager:
         game = Game(self._pb, self._sport, self, gtime)
         self._machine.add_model(game)
         new_time = gtime not in self._games
-        self._games[gtime].append(game)
+        if new_time:
+            self._games[gtime] = [game]
+        else:
+            self._games[gtime].append(game)
 
         # Re-arm the future timer as this game might be sooner than
         # the previous future game time.
@@ -731,16 +742,16 @@ class GameManager:
             if not game.gtime.is_for_now:
                 self._rearm_future_timer()
 
-            # Remove game from linked players (if this game is being
-            # deleted with players present, e.g. roll)
-            for player in game.players:
-                player.user.in_games.remove(game)
+        # Remove game from linked players (if this game is being
+        # deleted with players present, e.g. roll)
+        for player in game.players:
+            player.user.in_games.remove(game)
 
-            # Make sure we definitely are not in any area queues
-            self._sport.area.remove_from_rolling(game)
-            self._sport.area.remove_from_queue(game)
+        # Make sure we definitely are not in any area queues
+        self._sport.area.remove_from_rolling(game)
+        self._sport.area.remove_from_queue(game)
 
-            self._sport.location.game_table.delete_record(game.db_id)
+        self._sport.location.game_table.delete_record(game.db_id)
 
     def _announce_game(self, game):
         self._sport.announce(game.pretty)

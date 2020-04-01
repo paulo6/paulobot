@@ -38,13 +38,17 @@ class Area:
         return len(self._queue)
 
     @property
-    def is_none(self):
+    def is_null(self):
         return self.name is None
 
     def is_busy(self, game=None):
         # If there's a hold then it's busy!
         if self._manual_busy is not None:
             return True
+
+        # If the area size is 0, then unlimited size!
+        if self.size == 0:
+            return False
 
         # If this game is in the rolling queue, then it isn't
         # busy for this game
@@ -101,6 +105,7 @@ class Location:
         self.room = room
         self.sports = {}
         self.areas = {}
+        self.null_area = None
         self.users = set()
         self.game_table = paulobot.database.Table(
                 self._pb.database,
@@ -123,7 +128,7 @@ class Location:
                           key=paulobot.game.db_rec_time_key)
         for rec in recs:
             self.sports[rec['sport']].restore_game(rec)
-        LOGGER.info("Restored %s games for location %s from DB",
+        LOGGER.info("Restored %s games for location '%s' from DB",
                     len(recs), self.name)
 
 
@@ -155,9 +160,9 @@ class LocationManager:
             loc.restore_from_db()
 
     def _get_null_area(self, loc):
-        if None not in loc.areas:
-            loc.areas[None] = Area(None, None, 0)
-        return loc.areas[None]
+        if loc.null_area is None:
+            loc.null_area = Area(None, None, 0)
+        return loc.null_area
 
     def _load_config(self):
         for c_loc in self._pb.config.locations:

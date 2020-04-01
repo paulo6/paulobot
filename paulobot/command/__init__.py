@@ -283,8 +283,6 @@ class Handler(object):
 
             def sport_str(s):
                 info = []
-                if not s.area.is_none:
-                    info.append(f"area: {s.area}")
                 if s.is_flexible:
                     info.append(f"min-players: {s.min_players}")
                 if s.team_count == 1 and s.team_size == 0:
@@ -300,7 +298,7 @@ class Handler(object):
                 "  - " + "\n  - ".join(sport_str(s)
                                        for s in sports),
                 "  - " + "\n  - ".join(f"{a.name} - {a.desc} _(location: {a.location})_"
-                                       for a in areas if not a.is_none))
+                                       for a in areas))
 
         help = MAIN_HELP_PREAMBLE.format(locations, global_help)
         msg.reply_to_user(help)

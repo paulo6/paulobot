@@ -18,6 +18,9 @@ _CMDS_GLOBAL = {
                              Flags.Direct | Flags.Group | Flags.Admin,
                              args=["<user> Player to execute command as",
                                    "<command:subcmd>+ Command string to execute"]),
+    'set-location'  : CmdDef('Add self to a location',
+                             Flags.Direct | Flags.Admin,
+                             args=["<location:string> Location name"]),
 
     # Hidden commands
     'register'      : CmdDef(None,
@@ -79,3 +82,12 @@ class ClassHandler(defs.ClassHandlerInterface):
         new_msg = common.Message(user, text, msg.room)
         new_msg.user_reply_override = msg.user
         self.pb.command_handler.handle_message(new_msg)
+
+    def _cmd_set_location(self, msg):
+        loc_name = msg.args["location"]
+        loc = self.pb.loc_manager.locations.get(loc_name)
+        if loc is None:
+            raise CommandError(f"No location named '{loc_name}'")
+        loc.add_user(msg.user)
+        msg.user.save()
+        msg.reply(f"Added to location {loc_name}")
