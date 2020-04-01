@@ -56,7 +56,7 @@ GAME_TRANSITIONS = [
     # Player removed transitions
     {
         'trigger': Trigger.PlayerRemoved, 'source': '*',              'dest': State.NotQuorate,
-        'conditions': ['has_players']
+        'conditions': ['has_players', 'has_space'] # Make sure we only change state if there is space
     },
     {
         'trigger': Trigger.PlayerRemoved, 'source': '*',              'dest': State.Empty,
@@ -566,13 +566,14 @@ class GameManager:
 
         # Now do some post announce handling
 
-        # If the event was an unregister, see whether players can be shuffled!
-        if event.event.name == Trigger.PlayerRemoved:
-            self._reorganize_games(combine_gtime=game.gtime)
-
-        # Check whether this is an old game that needs to be promoted to now.
+        # Game reorg! If this is a not quorate old game, then move it to now
+        #
+        # Else, if a player was removed, see if any players can be shuffled
+        # in from other games for this time
         if game.state is State.NotQuorate:
-            self._reorganize_games(check_old_gtime=game.gtime)
+            self._move_old_games(game.gtime)
+        elif event.event.name == Trigger.PlayerRemoved:
+            self._combine_games(game.gtime)
 
         # After we have done the announcing and re-orging, remove ourselves
         # from area in_progress queue if we have come from
@@ -705,7 +706,7 @@ class GameManager:
         # See whether there are any non quorate games that
         # can be purged!
         for time in past_times:
-            self._reorganize_games(check_old_gtime=time)
+            self._move_old_games(time)
 
         # Re-arm the timer for next future game
         self._rearm_future_timer()
@@ -754,82 +755,91 @@ class GameManager:
         self._sport.announce(game.pretty)
 
     @_reorganize_lock
-    def _reorganize_games(self, check_old_gtime=None, combine_gtime=None):
-        # If we have been asked to check an old time, find any non-quorate
-        # games in the past and move them.
-        if (check_old_gtime is not None and
-            check_old_gtime in self._games and
-            not check_old_gtime.is_for_now and
-            check_old_gtime <= datetime.datetime.now()):
+    def _move_old_games(self, old_gtime):
+        if (old_gtime not in self._games or
+            old_gtime.is_for_now or
+            old_gtime > datetime.datetime.now()):
+            return
 
-            LOGGER.info("Try to move old games for %s", check_old_gtime)
+        LOGGER.info("Try to move old games for %s", old_gtime)
 
-            # Move any non-quorate games. Games that are quorate leave alone
-            # to preserve the player group so they can roll in peace!
-            old_games = [g for g in self._games[check_old_gtime]
-                         if g.state is State.NotQuorate]
-            if old_games:
-                if GTIME_NOW in self._games:
-                    self._games[GTIME_NOW].extend(old_games)
-                else:
-                    self._games[GTIME_NOW] = old_games
-                for game in old_games:
-                    game.gtime = GTIME_NOW
-                    
-                    # Need to save the game now we have changed the time.
-                    self._save_game(game)
+        # Move any non-quorate games. Games that are quorate leave alone
+        # to preserve the player group so they can roll in peace!
+        old_games = [g for g in self._games[old_gtime]
+                        if g.state is State.NotQuorate]
+        if old_games:
+            if GTIME_NOW in self._games:
+                self._games[GTIME_NOW].extend(old_games)
+            else:
+                self._games[GTIME_NOW] = old_games
+            for game in old_games:
+                game.gtime = GTIME_NOW
 
-                # Remove time entry from list if we moved all
-                # the games
-                if len(self._games[check_old_gtime]) == 0:
-                    del self._games[check_old_gtime]
+                # Need to save the game now we have changed the time.
+                self._save_game(game)
 
-                # Now sort the games for now by creation time given we have added some
-                self._games[GTIME_NOW].sort(key=lambda g: g.created_time)
-                self._sport.announce(f"Changed {len(old_games)} past game(s) for {check_old_gtime} "
-                                      "into games for now")
+            # Remove time entry from list if we moved all
+            # the games
+            if len(self._games[old_gtime]) == 0:
+                del self._games[old_gtime]
 
-                # Check and remove duplicate players - players in these old games could also
-                # be in a game for now, so make sure they only appear in the earliest created
-                # game.
-                seen_players = set()
-                for game in self._games[GTIME_NOW]:
-                    # Get players to remove that we have in earlier games
-                    duplicates = [p for p in game.players if p in seen_players]
+            # Now sort the games for now by creation time given we have added some
+            self._games[GTIME_NOW].sort(key=lambda g: g.created_time)
+            self._sport.announce(f"Changed {len(old_games)} past game(s) for {old_gtime} "
+                                 "into games for now")
 
-                    # Update our seen players
-                    seen_players.update(game.players)
+            # Check and remove duplicate players - players in these old games could also
+            # be in a game for now, so make sure they only appear in the earliest created
+            # game.
+            seen_players = set()
+            players_removed = False
+            for game in self._games[GTIME_NOW]:
+                # Get players to remove that we have in earlier games
+                duplicates = [p for p in game.players if p in seen_players]
 
-                    # Remove the duplicates
+                # Update our seen players
+                seen_players.update(game.players)
+
+                # Remove the duplicates
+                if duplicates:
                     game.remove_players(duplicates)
+                    players_removed = True
 
-                # We've moved some games to now, see if they can be combined
-                combine_gtime = GTIME_NOW
+            # If players were removed, then let the state machine process that
+            # first and have the finalize handler kick _combine_games to check
+            # for spaces and shuffle people.
+            #
+            # If no games were changed, then do the combine check now.
+            if not players_removed:
+                # Release the lock before calling combine
+                self._reorg_in_progress = False
+                self._combine_games(GTIME_NOW)
 
+    @_reorganize_lock
+    def _combine_games(self, gtime):
         # If there a multiple games for the combine game time, then see whether
         # they can be combined.
-        if (combine_gtime is not None and
-            combine_gtime in self._games and
-            len(self._games[combine_gtime]) > 1):
-            self._sport.announce(
-                f"Checking to see if any players can be promoted for games for {combine_gtime}...")
+        if gtime not in self._games or len(self._games[gtime]) <= 1:
+            return
+        self._sport.announce(
+            f"Checking to see if any players can be promoted for games for {gtime}...")
 
-            # Start at the first game and shuffle players down from the
-            # one above, if there is space. Walk the list by index as
-            # we may delete the game ahead of us if we empty it.
-            games = self._games[combine_gtime]
-            idx = 0
-            while idx < len(games) - 1:
-                if games[idx].has_space:
-                    spaces = games[idx].spaces_left
-                    if spaces == 0:
-                        spaces = len(games[idx])
+        # Start at the first game and shuffle players down from the
+        # one above, if there is space. Walk the list by index as
+        # we may delete the game ahead of us if we empty it.
+        games = self._games[gtime]
+        idx = 0
+        while idx < len(games) - 1:
+            if games[idx].has_space:
+                spaces = games[idx].spaces_left
+                if spaces == 0:
+                    spaces = len(games[idx])
 
-                    players = games[idx + 1].players[:spaces]
-                    games[idx + 1].remove_players(players)
-                    games[idx].add_players(players)
-                # Move onto next game
-                idx += 1
+                players = games[idx + 1].players[:spaces]
+                games[idx + 1].remove_players(players)
+                games[idx].add_players(players)
+            # Move onto next game
+            idx += 1
 
 def db_rec_time_key(rec):
     if rec['quorate_time'] is None:
