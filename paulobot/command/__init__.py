@@ -283,6 +283,8 @@ class Handler(object):
 
             def sport_str(s):
                 info = []
+                if not s.area.is_null:
+                    info.append(f"area: {s.area}")
                 if s.is_flexible:
                     info.append(f"min-players: {s.min_players}")
                 if s.team_count == 1 and s.team_size == 0:

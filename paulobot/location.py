@@ -64,30 +64,37 @@ class Area:
         return len(self._in_progress) + len(self._rolling) >= self.size
 
     def add_to_queue(self, game):
+        assert isinstance(game, paulobot.game.Game)
         if game not in self._queue:
             self._queue.append(game)
 
     def remove_from_queue(self, game):
+        assert isinstance(game, paulobot.game.Game)
         if game in self._queue:
             self._queue.remove(game)
 
-    def add_to_rolling(self, game):
-        if game not in self._rolling:
-            self._rolling.append(game)
-
-    def remove_from_rolling(self, game):
-        if game in self._rolling:
-            self._rolling.remove(game)
-
     def queue_index(self, game):
+        assert isinstance(game, paulobot.game.Game)
         if game in self._queue:
             return self._queue.index(game)
         return None
 
-    def game_rolled(self, game, result):
+    def add_to_rolling(self, game):
+        assert isinstance(game, paulobot.game.Game)
+        if game not in self._rolling:
+            self._rolling.append(game)
+
+    def remove_from_rolling(self, game):
+        assert isinstance(game, paulobot.game.Game)
         if game in self._rolling:
             self._rolling.remove(game)
-        self._in_progress.append(result)
+
+    def game_rolled(self, game, result):
+        assert isinstance(game, paulobot.game.Game)
+        if game in self._rolling:
+            self._rolling.remove(game)
+        # @@@ Result not implemented yet
+        # self._in_progress.append(result)
 
     def announce(self, message):
         """
@@ -141,7 +148,7 @@ class LocationManager:
 
     def get_room_location(self, room):
         locs = [l for l in self.locations.values()
-                  if l.room.id == room.id]
+                  if l.room and l.room.id == room.id]
         if locs:
             return locs[0]
         return None
