@@ -75,7 +75,7 @@ class _Base:
             raise ConfigError(f"Unexpected field(s) ",
                               "' ,'".join(bad), self._object_name)
 
-        # Event all the json field properites to read the
+        # Trigger all the json field properites to read the
         # JSON and validate fields
         for name, val in self.__class__.__dict__.items():
             if isinstance(val, json_field):
