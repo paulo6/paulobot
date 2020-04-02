@@ -188,15 +188,17 @@ class Handler(object):
             raise CommandError(f"`{msg.cmd}` does not have a direct-chat version",
                                reply_to_user=True)
 
-        if cmd_def.has_flag(Flags.Score) and (not msg.sport or not msg.sport.has_scores):
+        if not self._cmd_flag_check(msg, cmd_def, Flags.Score):
             raise CommandError("this command is not supported for "
-                               "sports without scoring support",
-                               reply_to_user=True)
+                               "sports without scoring support")
 
-        if cmd_def.has_flag(Flags.Flexi) and (not msg.sport or not msg.sport.is_flexible):
+        if not self._cmd_flag_check(msg, cmd_def, Flags.Flexi):
             raise CommandError("this command is not supported for sports with "
-                               "fixed teams",
-                               reply_to_user=True)
+                               "fixed team sizes")
+
+        # Catch all check for any flags without specific handling above
+        if not self._cmd_flag_check(msg, cmd_def):
+            raise CommandError("this command cannot be used here")
 
 
         # Parse the arguments (unless the argument is ?)
@@ -317,19 +319,11 @@ class Handler(object):
                 if cmd_def.alias is not None:
                     continue
 
-                if cmd_def.has_flag(Flags.Admin) and not msg.user.is_admin:
+                if not self._cmd_flag_check(msg, cmd_def):
                     continue
 
                 if (cmd_def.desc is None
                     or not cmd_def.has_flag(flag)):
-                    continue
-
-                if cmd_def.has_flag(Flags.Score) and (
-                    not msg.sport or not msg.sport.has_scores):
-                    continue
-
-                if cmd_def.has_flag(Flags.Flexi) and (
-                    not msg.sport or msg.sport.team_size != 0):
                     continue
 
                 if is_group and cmd_def.grp_desc is not None:
@@ -434,22 +428,10 @@ class Handler(object):
                         for cmd, cmd_def in handler_class.cmd_defs.items()
                         if cmd_def.has_flag(Flags.Direct))
 
-        # Filter out Admin ones
+        # Filter out commands that don't match
         cmds = ((cmd, cmd_def)
                     for cmd, cmd_def in cmds
-                    if msg.user.is_admin or not cmd_def.has_flag(Flags.Admin))
-
-        # Filter out non-score ones
-        if not msg.sport or not msg.sport.has_scores:
-            cmds = ((cmd, cmd_def)
-                        for cmd, cmd_def in cmds
-                        if not cmd_def.has_flag(Flags.Score))
-
-        # Filter out non-flexi ones
-        if not msg.sport or not msg.sport.is_flexible:
-            cmds = ((cmd, cmd_def)
-                        for cmd, cmd_def in cmds
-                        if not cmd_def.has_flag(Flags.Flexi))
+                    if not self._cmd_flag_check(msg, cmd_def))
 
         # Filter out hidden ones
         cmds = ((cmd, cmd_def)
@@ -496,3 +478,19 @@ class Handler(object):
 
         # Print the args
         msg.reply(args_str)
+
+    def _cmd_flag_check(self, msg, cmd_def, flag=None):
+        if flag is None:
+            flags = Flags
+        else:
+            flags = (flag, )
+
+        checks = {
+            Flags.Admin: msg.user.is_admin,
+            Flags.Score: msg.sport and msg.sport.has_scores,
+            Flags.Flexi: msg.sport and msg.sport.is_flexible,
+        }
+
+        return all(checks[f]
+                   for f in flags
+                   if f in checks and cmd_def.has_flag(f))
