@@ -4,6 +4,8 @@ import paulobot.sport
 import paulobot.database
 import paulobot.game
 
+from paulobot import templates
+
 LOGGER = logging.getLogger(__name__)
 
 class Area:
@@ -19,9 +21,6 @@ class Area:
 
         # Games that are currently rolling in this area
         self._rolling = []
-
-        # Results for games that are in progress
-        self._in_progress = []
 
         # Manual busy details
         self._manual_busy = None
@@ -40,6 +39,30 @@ class Area:
     @property
     def is_null(self):
         return self.name is None
+
+    @property
+    def sorted_sports(self):
+        return sorted(self.sports, key=lambda s: s.name)
+
+    @property
+    def rolling_games(self):
+        return self._rolling
+
+    @property
+    def game_queue(self):
+        return self._queue
+
+    @property
+    def in_progress_results(self):
+        # @@@ Should probably just store results in the stats
+        # class, and this function can go round the sports
+        # querying them for their pending results (filtering
+        # out ones older than the cut-off)
+        return []
+
+    @property
+    def pretty(self):
+        return templates.area.area_string(self)
 
     def is_busy(self, game=None):
         # If there's a hold then it's busy!
@@ -61,7 +84,7 @@ class Area:
             return True
 
         # See whether there is space for a game to roll
-        return len(self._in_progress) + len(self._rolling) >= self.size
+        return len(self.in_progress_results) + len(self._rolling) >= self.size
 
     def add_to_queue(self, game):
         assert isinstance(game, paulobot.game.Game)
@@ -89,12 +112,12 @@ class Area:
         if game in self._rolling:
             self._rolling.remove(game)
 
-    def game_rolled(self, game, result):
+    def game_rolled(self, game):
         assert isinstance(game, paulobot.game.Game)
         if game in self._rolling:
             self._rolling.remove(game)
-        # @@@ Result not implemented yet
-        # self._in_progress.append(result)
+        if game in self._queue:
+            self._queue.remove(game)
 
     def announce(self, message):
         """
@@ -204,5 +227,6 @@ class LocationManager:
                     team_count=c_sport.team_count,
                     min_players=c_sport.min_players)
                 loc.sports[sport.name] = sport
+                area.sports.append(sport)
 
 

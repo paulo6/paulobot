@@ -8,6 +8,9 @@ from .. import common
 from . import defs
 from .defs import (CommandError, Flags, CmdDef)
 
+import paulobot.templates.commands as template
+from paulobot.game import State as GameState
+
 # Global command list (e.g. "xxx")
 _CMDS_GLOBAL = {
     'time'          : CmdDef('Show times',
@@ -18,9 +21,14 @@ _CMDS_GLOBAL = {
                              Flags.Direct | Flags.Group | Flags.Admin,
                              args=["<user> Player to execute command as",
                                    "<command:subcmd>+ Command string to execute"]),
-    'set-location'  : CmdDef('Add self to a location',
+    'join-location' : CmdDef('Add self to a location',
                              Flags.Direct | Flags.Admin,
                              args=["<location:string> Location name"]),
+    'users'         : CmdDef('Show users for your location(s)',
+                             Flags.Direct),
+    'status'        : CmdDef('Show status for your location(s)',
+                             grp_desc='Show status for this room location',
+                             flags=Flags.Direct | Flags.Group),
 
     # Hidden commands
     'register'      : CmdDef(None,
@@ -83,7 +91,7 @@ class ClassHandler(defs.ClassHandlerInterface):
         new_msg.user_reply_override = msg.user
         self.pb.command_handler.handle_message(new_msg)
 
-    def _cmd_set_location(self, msg):
+    def _cmd_set_join_location(self, msg):
         loc_name = msg.args["location"]
         loc = self.pb.loc_manager.locations.get(loc_name)
         if loc is None:
@@ -91,3 +99,51 @@ class ClassHandler(defs.ClassHandlerInterface):
         loc.add_user(msg.user)
         msg.user.save()
         msg.reply(f"Added to location {loc_name}")
+
+    def _cmd_users(self, msg):
+        # Update idle time now
+        msg.user.update_last_msg()
+
+        if msg.user.is_admin:
+            locations = self.pb.loc_manager.locations.values()
+        else:
+            locations = msg.user.locations
+
+        users = sorted({u for l in locations
+                          for u in l.users},
+                        key=lambda u: u.email)
+
+        text = f"**Users in your location(s)**\n\n"
+        for u in users:
+            text += f"**{u.full_name}** ({u.email})"
+            extras = []
+            if u.is_idle:
+                extras.append("is idle")
+            if u.is_admin:
+                extras.append("is admin")
+            if extras:
+                text += " " + ", ".join(extras)
+
+            locs = "' '".join(l.name for l in u.locations)
+            if locs:
+                text += "  \n" + template.INDENT
+                text += f"_locations: '{locs}'_"
+            text += "  \n"
+
+        msg.reply(text)
+
+    def _cmd_status(self, msg):
+        if msg.room is None:
+            locs = msg.user.locations
+        else:
+            locs = (self.pb.loc_manager.get_room_location(msg.room),)
+
+        areas = sorted((a for l in locs
+                          for a in l.areas.values()),
+                       key=lambda a: a.name)
+        text = ""
+        for area in areas:
+            text += area.pretty
+            text += "\n\n"
+
+        msg.reply(text)

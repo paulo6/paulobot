@@ -14,8 +14,8 @@ import paulobot.templates.commands as template
 # Default arg string to use for time
 _TIME_ARG = "[<time:choice(<time>,now,next)>]"
 
-# Global command list (e.g. "tts xxx")
-_CMDS_GLOBAL = {
+# Sport command list (e.g. "tts xxx")
+_CMDS_SPORT = {
     # Group and Direct
     'reg'         : CmdDef('Register for a game',
                            Flags.Direct | Flags.Group,
@@ -39,7 +39,7 @@ _CMDS_GLOBAL = {
 
 class ClassHandler(defs.ClassHandlerInterface):
     """
-    Handler for _CMDS_GLOBAL commands
+    Handler for _CMDS_SPORT commands
 
     """
     def __init__(self, pb):
@@ -47,7 +47,7 @@ class ClassHandler(defs.ClassHandlerInterface):
 
     @property
     def cmd_defs(self):
-        return _CMDS_GLOBAL
+        return _CMDS_SPORT
 
     def get_gtime(self, msg, arg_name="time",
                   default=common.TIME_NOW):

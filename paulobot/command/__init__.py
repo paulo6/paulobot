@@ -5,6 +5,7 @@ import collections
 from .. import common
 from . import global_cmds
 from . import sport_cmds
+from . import area_cmds
 from . import defs
 
 from .defs import (ParseError, CommandError, Flags)
@@ -32,7 +33,7 @@ class Handler(object):
         self._handlers = {
             CommandType.Global: global_cmds.ClassHandler(self._pb),
             CommandType.Sport: sport_cmds.ClassHandler(self._pb),
-            CommandType.Area: None,
+            CommandType.Area: area_cmds.ClassHandler(self._pb),
         }
 
     def handle_message(self, msg):
@@ -129,9 +130,16 @@ class Handler(object):
                     break
 
             if msg.location is None:
-                raise CommandError(f"Unknown command '{target}'. See `help` for supported commands.")
+                # We haven't matched a location or global command exactly, see if they
+                # entered a partial global command.
+                if any(k.startswith(target)
+                       for k in self._handlers[CommandType.Global].cmd_defs.keys()):
+                    msg.cmd_type = CommandType.Global
+                else:
+                    raise CommandError(f"Unknown command '{target}'. See `help` for supported commands.")
 
-            # Shuffle out the sport/area
+        # Shuffle out the sport/area keyword if not a global command
+        if msg.cmd_type != CommandType.Global:
             if cmds[0] != "help":
                 # Should have at least 1 command
                 if len(cmds) < 2:
@@ -162,10 +170,22 @@ class Handler(object):
         else:
             cmd_def = handler_class.cmd_defs.get(msg.cmd)
 
-            # If this is an alias, then update
-            if cmd_def is not None and cmd_def.alias is not None:
-                msg.cmd= cmd_def.alias
-                cmd_def = handler_class.cmd_defs.get(msg.cmd)
+        if cmd_def is None:
+            # See if a partial match (ignoring aliases)
+            matches = [(n, c) for n, c in handler_class.cmd_defs.items()
+                        if n.startswith(msg.cmd) and
+                           not c.alias and
+                           self._cmd_flag_check(msg, c)]
+            if len(matches) > 1:
+                raise CommandError(f"Multiple commands start with '{msg.cmd}': "
+                                    f"{', '.join(m[0] for m in matches)}")
+            elif len(matches) == 1:
+                msg.cmd, cmd_def = matches[0]
+
+        # If this is an alias, then update
+        if cmd_def is not None and cmd_def.alias is not None:
+            msg.cmd= cmd_def.alias
+            cmd_def = handler_class.cmd_defs.get(msg.cmd)
 
         # Do some checks
         if cmd_def is None or (cmd_def.has_flag(Flags.Admin)

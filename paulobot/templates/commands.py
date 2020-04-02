@@ -1,4 +1,5 @@
 SPACE = "&nbsp;"
+INDENT = SPACE * 4
 
 SPORT_STATUS = """**{sport} Games status**  
 {games}
