@@ -142,7 +142,7 @@ class Client(object):
             self._on_room_leave(room,
                                 None if email in self.my_emails else email)
 
-    def _process_message(self, data):
+    def _process_message(self, data, raise_errors=False):
         if data['data']['eventType'] == 'conversation.activity':
             activity = data['data']['activity']
             verb = activity['verb']
@@ -151,6 +151,8 @@ class Client(object):
                     self._verb_handlers[verb](activity)
                 except Exception:
                     LOGGER.exception("Error handling %s", verb)
+                    if raise_errors:
+                        raise
 
     def _populate_room_titles(self):
         # Room titles are best effort for logging, so don't bail

@@ -4,12 +4,14 @@ import collections
 import datetime
 import pytz
 
+from contextlib import contextmanager
+
 import paulobot.webex
 from paulobot import PauloBot
 
 
 Room = collections.namedtuple("Room", ("id", "title"))
-Person = collections.namedtuple("Person", ("id", "email", "displayName", "firstName"))
+Person = collections.namedtuple("Person", ("id", "personEmail", "displayName", "firstName"))
 
 # Email address of the bot
 BOT_EMAIL = "test@bot.com"
@@ -24,42 +26,46 @@ TEST_ROOMS = {
 }
 
 # Test people
+TEST_PERSON_0 = "person0@foo.com"
 TEST_PERSON_1 = "person1@foo.com"
-TEST_PERSON_1_ID = "1"
-TEST_PERSON_2 = "person2@foo.com"
-TEST_PERSON_2_ID = "2"
 TEST_PEOPLE = {
-    TEST_PERSON_1_ID: Person(TEST_PERSON_1_ID, TEST_PERSON_1, "One Surname", "One"),
-    TEST_PERSON_2_ID: Person(TEST_PERSON_2_ID, TEST_PERSON_2, "Two Surname", "Two"),
+    0: Person(0, TEST_PERSON_0, "Zero Surname", "Zero"),
+    1: Person(1, TEST_PERSON_1, "One Surname", "One"),
+}
+
+MEMBERSHIPS = {
+    ROOMID_1: [TEST_PEOPLE[0]],
 }
 
 
-class UnexpectedCall(Exception):
+class UnexpectedCall(AssertionError):
     pass
 
 
-def mock_run(self, loop):
-    self._run_prep()
+class MockClient(paulobot.webex.Client):
+    def run(self, loop):
+        self._run_prep()
+
 
 class MockAPI:
     def __init__(self, access_token):
         self.rooms = MockAPIRooms
         self.messages = MockAPIMessages
-        self._session = mock.Mock(spec=["post"])
+        self._session = mock.Mock(spec=["post", "get"])
         self.people = MockAPIPeople
         self.memberships = MockAPIMemberships
 
 #
 # Replace WebexTeamsAPI our MockAPI, and stub Client.run
 #
-paulobot.webex.Client.run = mock_run
+paulobot.webex.Client = MockClient
 paulobot.webex.WebexTeamsAPI = MockAPI
 
 Message = collections.namedtuple("Message",
     ("text", "html", "personEmail", "personId", "roomType", "roomId", "created"))
 
 class MockAPIMessages:
-    create = mock.Mock()
+    create = mock.Mock(side_effect=UnexpectedCall)
     get = mock.Mock(side_effect=UnexpectedCall)
 
 class MockAPIRooms:
@@ -72,7 +78,18 @@ class MockAPIPeople:
     get = TEST_PEOPLE.get
 
 class MockAPIMemberships:
-    list = lambda roomId: []
+    list = lambda roomId: MEMBERSHIPS.get(roomId, [])
+
+
+@contextmanager
+def expect_bot_msgs(bot, messages):
+    # Reset mock
+    bot.api.messages.create.reset_mock(side_effect=True)
+    yield None
+    assert bot.api.messages.create.call_count == len(messages)
+    for idx, call in enumerate(bot.api.messages.create.call_args_list):
+        assert call[1]["markdown"] == messages[idx]
+    bot.api.messages.create.reset_mock(side_effect=UnexpectedCall)
 
 
 class Bot:
@@ -95,9 +112,9 @@ class Bot:
 
         # Reset the mock and set it to return our message details
         now = datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
-        self.api.messages.get.reset_mock(side_effect=UnexpectedCall)
+        self.api.messages.get.reset_mock()
         self.api.messages.get.side_effect = [
-            Message(text, text, TEST_PEOPLE[uid].email, uid, mtype, room_id, now)
+            Message(text, text, TEST_PEOPLE[uid].personEmail, uid, mtype, room_id, now)
         ]
 
         # Inject message
@@ -111,7 +128,7 @@ class Bot:
                 }
             }
         }
-        self.webex._process_message(data)
+        self.webex._process_message(data, True)
 
         # Check we got called, and reset mock
         self.api.messages.get.assert_called_once_with(msg_id)
