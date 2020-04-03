@@ -84,7 +84,7 @@ class Client(object):
                                      api.__qualname__, args, kwargs,
                                      "".join(traceback.format_stack()))
                         raise ApiError(str(e)) from e
-                    LOGGER.exception()
+                    LOGGER.exception(e)
                 else:
                     LOGGER.error("API %s failed (%s), retrying (%s)...",
                                  api.__qualname__, e, attempt)

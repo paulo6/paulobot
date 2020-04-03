@@ -617,7 +617,7 @@ class GameManager:
         for player in game.players:
             player.user.send_msg(game_text)
 
-        self._sport.area.game_rolled(game, None) # @@@ RESULT
+        self._sport.area.game_rolled(game)
         self._delete_game(game)
 
         # Stop!

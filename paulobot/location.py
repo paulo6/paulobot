@@ -68,6 +68,10 @@ class Area:
     def pretty(self):
         return templates.area.area_string(self)
 
+    @property
+    def pretty_for_direct(self):
+        return templates.area.area_string(self, is_direct=True)
+
     def is_busy(self, game=None):
         # If there's a hold then it's busy!
         if self._manual_busy is not None:

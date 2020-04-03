@@ -17,9 +17,6 @@ from paulobot.common import CommandType, BadAction, MD_RAW
 
 LOGGER = logging.getLogger(__name__)
 
-class HandlerError(Exception):
-    pass
-
 class Handler(object):
     """
     Command handler class for handling MUC and SUC messages that contain a
@@ -37,6 +34,11 @@ class Handler(object):
         }
 
     def handle_message(self, msg):
+        # If no message, then exit
+        if not msg.text:
+            msg.user.update_last_msg()
+            return
+
         try:
             self._handle_message_worker(msg)
 
@@ -71,9 +73,6 @@ class Handler(object):
         msg.user.update_last_msg()
 
     def _set_cmd_type(self, msg):
-        if not msg.text:
-            raise HandlerError(None)
-
         # Split the message, removing any blank portions
         cmds = [seg
                 for seg in msg.text.split(" ")

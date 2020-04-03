@@ -1,15 +1,15 @@
 from paulobot.templates.commands import INDENT
 from paulobot.game import State as GameState
 
-AREA_STATUS = """**Area: {area}** _(sports: {sports})_  
+AREA_STATUS = """**Area: {area}** _(sports: {sports})_
 {status}
 """
 
-NULL_AREA_STATUS = """**Sports:** _{sports}_  
+NULL_AREA_STATUS = """**Sports:** _{sports}_
 {status}
 """
 
-def area_string(area):
+def area_string(area, is_direct=False):
     open_games = []
     future_games = []
     held_games = []
@@ -28,6 +28,13 @@ def area_string(area):
               game not in area.game_queue):
             unknown_games.append(game)
 
+    # Wrapper to select correct game pretty fn, bearing in mind
+    # Game.pretty_for_direct adds its own sport tag
+    def game_str(g):
+        if is_direct:
+            return g.pretty_for_direct
+        return f"{g.sport.tag} {g.pretty}"
+
     for title, games in (("Waiting for sign-ups", open_games),
                          ("Held", held_games),
                          ("Scheduled", future_games),
@@ -37,12 +44,12 @@ def area_string(area):
             continue
         text += f"{title}:  \n"
         for g in games:
-            text += f"{INDENT}{g.sport.tag} {g.pretty}  \n"
+            text += f"{INDENT}{game_str(g)}  \n"
 
     if area.game_queue:
         text += "\nBusy queue:  \n"
         for idx, g in enumerate(area.game_queue):
-            text += f"{INDENT}{idx} {g.sport.tag} {g.pretty}  \n"
+            text += f"{INDENT}{idx} {game_str(g)}  \n"
 
     if area.is_null:
         if not text:
