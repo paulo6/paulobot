@@ -177,12 +177,14 @@ class Client(object):
                 raise Exception("Failed to get device info")
         return device_info
 
-    def run(self, main_loop):
+    def _run_prep(self):
         if self._device_info is None:
             self._device_info = self._get_device_info()
         self.my_emails = self.api.people.me().emails
         self._populate_room_titles()
 
+    def run(self, main_loop):
+        self._run_prep()
         async def _run():
             LOGGER.info("Opening websocket connection to %s", self._device_info['webSocketUrl'])
             async with websockets.connect(self._device_info['webSocketUrl']) as ws:

@@ -1,3 +1,5 @@
+"""Module tests for the paulobot.game module"""
+
 import pytest
 import transitions
 import functools

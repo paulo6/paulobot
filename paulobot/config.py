@@ -161,8 +161,8 @@ class Location(_Base):
 
 
 class Config(_Base):
-    def __init__(self):
-        data = self._load_config(os.path.expanduser(DEFAULT_CONFIG))
+    def __init__(self, filename=DEFAULT_CONFIG):
+        data = self._load_config(os.path.expanduser(filename))
         super().__init__(data)
 
     def _load_config(self, path):

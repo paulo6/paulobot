@@ -14,7 +14,7 @@ import paulobot.command
 
 from paulobot.user import UserManager
 from paulobot.location import LocationManager
-from paulobot.config import Config, ConfigError
+from paulobot.config import Config, ConfigError, DEFAULT_CONFIG
 from paulobot.database import Database
 
 from paulobot.common import Message, Room
@@ -98,17 +98,17 @@ class Timer:
 
 
 class PauloBot:
-    def __init__(self, args):
+    def __init__(self, config_file=DEFAULT_CONFIG, log_level=logging.INFO):
         # Initialization order:
         #  1) Config, as this can control logging
         #  2) Logging, so modules can log
         #  3) Webex client, so modules can lookup stuff from webex
         #  4) Database
         #  5) Managers
-        self.config = Config()
+        self.config = Config(config_file)
         self.main_loop = asyncio.get_event_loop()
 
-        self._setup_logging(level=args.level)
+        self._setup_logging(level=log_level)
         self._webex = paulobot.webex.Client(self.config.token,
                                             on_message=self._on_message,
                                             on_room_join=self._on_room_join)
@@ -260,7 +260,7 @@ def main(args):
                         help="Logging level. Lower is more verbose.")
     args = parser.parse_args(args)
     try:
-        PauloBot(args).run()
+        PauloBot(log_level=args.level).run()
     except KeyboardInterrupt:
         pass
     except ConfigError as e:
