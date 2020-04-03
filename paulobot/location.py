@@ -1,4 +1,5 @@
 import logging
+import functools
 
 import paulobot.sport
 import paulobot.database
@@ -8,6 +9,7 @@ from paulobot import templates
 
 LOGGER = logging.getLogger(__name__)
 
+@functools.total_ordering
 class Area:
     def __init__(self, location, name, desc, size=1):
         self.location = location
@@ -28,6 +30,12 @@ class Area:
     def __str__(self):
         return self.name
 
+    def __eq__(self, other):
+        return self == other
+
+    def __lt__(self, other):
+        return self.name < other.name
+
     @property
     def tag(self):
         return f"<{self.name.upper()}>"
@@ -39,10 +47,6 @@ class Area:
     @property
     def is_null(self):
         return self.name is None
-
-    @property
-    def sorted_sports(self):
-        return sorted(self.sports, key=lambda s: s.name)
 
     @property
     def rolling_games(self):
@@ -129,12 +133,13 @@ class Area:
 
 
 class Location:
-    def __init__(self, pb, name, room):
+    def __init__(self, pb, name, desc, room):
         self._pb = pb
         self.name = name
+        self.desc = desc
         self.room = room
-        self.sports = {}
-        self.areas = {}
+        self._sports = {}
+        self._areas = {}
         self.null_area = None
         self.users = set()
         self.game_table = paulobot.database.Table(
@@ -145,8 +150,30 @@ class Location:
     def __str__(self):
         return self.name
 
+    @property
+    def sports(self):
+        return sorted(self._sports.values())
+
+    @property
+    def sport_names(self):
+        return sorted(self._sports.keys())
+
+    @property
+    def areas(self):
+        return sorted(self._areas.values())
+
+    @property
+    def area_names(self):
+        return sorted(self._areas.keys())
+
+    def get_sport(self, name):
+        return self._sports[name]
+
+    def get_area(self, name):
+        return self._areas[name]
+
     def add_user(self, user):
-        for sport in self.sports.values():
+        for sport in self._sports.values():
             sport.create_player(user)
 
         if user not in self.users:
@@ -159,7 +186,7 @@ class Location:
         LOGGER.info("Restoring %s games for location '%s' from DB",
                     len(recs), self.name)
         for rec in recs:
-            self.sports[rec['sport']].restore_game(rec)
+            self._sports[rec['sport']].restore_game(rec)
         LOGGER.info("Restore complete!")
 
 
@@ -201,7 +228,8 @@ class LocationManager:
                 room = self._pb.lookup_room(c_loc.room)
             else:
                 room = None
-            loc = Location(self._pb, c_loc.name, room)
+            loc = Location(self._pb, c_loc.name,
+                           c_loc.desc, room)
             self.locations[loc.name] = loc
 
             for c_area in c_loc.areas:
@@ -209,13 +237,13 @@ class LocationManager:
                             c_area.name,
                             c_area.desc,
                             c_area.size)
-                loc.areas[area.name] = area
+                loc._areas[area.name] = area
 
             for c_sport in c_loc.sports:
                 if c_sport.area is None:
                     area = self._get_null_area(loc)
                 else:
-                    area = loc.areas[c_sport.area]
+                    area = loc.get_area(c_sport.area)
 
                 sport = paulobot.sport.Sport(
                     self._pb,
@@ -226,7 +254,11 @@ class LocationManager:
                     team_size=c_sport.team_size,
                     team_count=c_sport.team_count,
                     min_players=c_sport.min_players)
-                loc.sports[sport.name] = sport
+                loc._sports[sport.name] = sport
                 area.sports.append(sport)
+
+            # Sort sports by name
+            for area in loc.areas:
+                area.sports = sorted(area.sports)
 
 

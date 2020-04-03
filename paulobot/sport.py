@@ -1,5 +1,6 @@
-import paulobot.skill
+import functools
 
+import paulobot.skill
 from paulobot.game import GameManager
 
 
@@ -19,6 +20,7 @@ class Player(paulobot.skill.Player):
         return hash(self.user)
 
 
+@functools.total_ordering
 class Sport:
     """
     Represents an office sport.
@@ -67,6 +69,12 @@ class Sport:
 
     def __str__(self):
         return self.name
+
+    def __eq__(self, other):
+        self == other
+
+    def __lt__(self, other):
+        return self.name < other.name
 
     @property
     def tag(self):

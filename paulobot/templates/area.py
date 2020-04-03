@@ -5,6 +5,10 @@ AREA_STATUS = """**Area: {area}** _(sports: {sports})_
 {status}
 """
 
+NULL_AREA_STATUS = """**Sports:** _{sports}_  
+{status}
+"""
+
 def area_string(area):
     open_games = []
     future_games = []
@@ -12,8 +16,8 @@ def area_string(area):
     unknown_games = []
     rolling_games = area.rolling_games
     text = ""
-    for game in (g for s in area.sorted_sports
-                    for g in s.games):
+    for game in (g for s in area.sports
+                   for g in s.games):
         if game.has_space:
             open_games.append(game)
         elif game.state is GameState.WaitingForTime:
@@ -40,9 +44,14 @@ def area_string(area):
         for idx, g in enumerate(area.game_queue):
             text += f"{INDENT}{idx} {g.sport.tag} {g.pretty}  \n"
 
+    if area.is_null:
+        if not text:
+            text = "No games"
+        return NULL_AREA_STATUS.format(sports=", ".join(s.name for s in area.sports),
+                                       status=text)
+
     if not text:
         text = "Area is free"
-
     return AREA_STATUS.format(area=area.name,
-                              sports=", ".join(s.name for s in area.sorted_sports),
+                              sports=", ".join(s.name for s in area.sports),
                               status=text)

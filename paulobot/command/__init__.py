@@ -116,17 +116,17 @@ class Handler(object):
                 locs = msg.user.locations
 
             for loc in locs:
-                if target in loc.sports:
+                if target in loc.sport_names:
                     msg.cmd_type = CommandType.Sport
                     msg.location = loc
-                    msg.sport = loc.sports[target]
+                    msg.sport = loc.get_sport(target)
                     msg.area = msg.sport.area
                     break
 
-                if target in loc.areas:
+                if target in loc.area_names:
                     msg.cmd_type = CommandType.Area
                     msg.location = loc
-                    msg.area = loc.areas[target]
+                    msg.area = loc.get_area(target)
                     break
 
             if msg.location is None:
@@ -300,8 +300,8 @@ class Handler(object):
             sports = []
             areas = []
             for loc in msg.user.locations:
-                sports.extend(loc.sports.values())
-                areas.extend(loc.areas.values())
+                sports.extend(loc.sports)
+                areas.extend(loc.areas)
 
             def sport_str(s):
                 info = []
@@ -463,7 +463,7 @@ class Handler(object):
         # If global then add sports/areas
         if msg.cmd_type is CommandType.Global:
             cmds = list(cmds) + [s for l in msg.user.locations
-                                   for s in l.sports.keys()]
+                                   for s in l.sports]
 
         # Get list of just the cmds
         cmd_names = sorted(cmds)

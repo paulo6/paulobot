@@ -72,7 +72,7 @@ class _Base:
                              if isinstance(v, json_field)]
         bad = [f for f in data.keys() if f not in expected]
         if bad:
-            raise ConfigError(f"Unexpected field(s) ",
+            raise ConfigError(f"Unexpected field(s)",
                               "' ,'".join(bad), self._object_name)
 
         # Trigger all the json field properites to read the
@@ -141,6 +141,10 @@ class Location(_Base):
 
     @json_field("name", mandatory=True)
     def name(self):
+        pass
+
+    @json_field("description", default="")
+    def desc(self):
         pass
 
     @json_field("room")

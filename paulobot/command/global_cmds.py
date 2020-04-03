@@ -29,6 +29,8 @@ _CMDS_GLOBAL = {
     'status'        : CmdDef('Show status for your location(s)',
                              grp_desc='Show status for this room location',
                              flags=Flags.Direct | Flags.Group),
+    'locations'     : CmdDef('Show your location(s)',
+                             Flags.Direct),
 
     # Hidden commands
     'register'      : CmdDef(None,
@@ -124,10 +126,10 @@ class ClassHandler(defs.ClassHandlerInterface):
             if extras:
                 text += " " + ", ".join(extras)
 
-            locs = "' '".join(l.name for l in u.locations)
+            locs = "', '".join(l.name for l in u.locations)
             if locs:
                 text += "  \n" + template.INDENT
-                text += f"_locations: '{locs}'_"
+                text += f"_Locations: '{locs}'_"
             text += "  \n"
 
         msg.reply(text)
@@ -138,12 +140,27 @@ class ClassHandler(defs.ClassHandlerInterface):
         else:
             locs = (self.pb.loc_manager.get_room_location(msg.room),)
 
-        areas = sorted((a for l in locs
-                          for a in l.areas.values()),
-                       key=lambda a: a.name)
+        # First gather null areas
+        areas = [l.null_area for l in locs if l.null_area]
+
+        areas += sorted(a for l in locs for a in l.areas)
         text = ""
+
         for area in areas:
             text += area.pretty
             text += "\n\n"
+
+        msg.reply(text)
+
+    def _cmd_locations(self, msg):
+        text = ""
+        for loc in msg.user.locations:
+            desc = f" _{loc.desc}_" if loc.desc else ""
+            text += f"**{loc.name}**{desc}  \n"
+            text += f"{template.INDENT}Sports: {', '.join(s.name for s in loc.sports)}  \n"
+            text += f"{template.INDENT}Room: {loc.room.title if loc.room else 'none'}  \n"
+
+        if not text:
+            text = "You are not in any locations"
 
         msg.reply(text)
