@@ -451,7 +451,7 @@ class Handler(object):
         # Filter out commands that don't match
         cmds = ((cmd, cmd_def)
                     for cmd, cmd_def in cmds
-                    if not self._cmd_flag_check(msg, cmd_def))
+                    if self._cmd_flag_check(msg, cmd_def))
 
         # Filter out hidden ones
         cmds = ((cmd, cmd_def)
@@ -462,8 +462,10 @@ class Handler(object):
 
         # If global then add sports/areas
         if msg.cmd_type is CommandType.Global:
-            cmds = list(cmds) + [s for l in msg.user.locations
-                                   for s in l.sports]
+            cmds = (list(cmds) + [s for l in msg.user.locations
+                                    for s in l.sport_names] +
+                                 [a for l in msg.user.locations
+                                    for a in l.area_names])
 
         # Get list of just the cmds
         cmd_names = sorted(cmds)
