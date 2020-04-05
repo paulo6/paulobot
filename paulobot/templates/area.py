@@ -1,11 +1,11 @@
 from paulobot.templates.commands import INDENT
 from paulobot.game import State as GameState
 
-AREA_STATUS = """**Area: {area}** _(sports: {sports})_
+AREA_STATUS = """**Area: {area}** _(sports: {sports})_  
 {status}
 """
 
-NULL_AREA_STATUS = """**Sports:** _{sports}_
+NULL_AREA_STATUS = """**Sports:** _{sports}_  
 {status}
 """
 
