@@ -74,4 +74,5 @@ Sample configuration:
             ]
         }
     ]
+}
 ```
