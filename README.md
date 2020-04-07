@@ -57,6 +57,7 @@ Sample configuration:
                     "name": "pool",
                     "description": "Pool singles",
                     "team-size": 2,
+                    "area": "kitchen"
                 }
             ]
         },
