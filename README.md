@@ -9,6 +9,30 @@ Webex Teams Bot for organising office sports
 
 ## Config Guide
 
+Configuration is provided via a JSON file, with the follow fields:
+ * **token**: Bot auth token
+ * **database**: Location of sqlite3 db file (default ~/.paulobot.db) [optional]
+ * **admins**: List of admin email address strings [optional]
+ * **notify**: List of email address strings to notify for bot error/warning logs [optional]
+ * **ready-timeout**: Amount of time in seconds to wait for idle users (default 120) [optional]
+ * **idle-time**: Amount of time in seconds before a user is counted as idle (default 180) [optional]
+ * **default-host**: Default email host to use when users specify userids without @domain.com [optional]
+ * **locations**: List of location objects, representing a sporting location
+   * **name**: Name of the location
+   * **description**: Description of the location [optional]
+   * **room**: Associated webex room id for this location
+   * **areas**: List of sporting area objects in the location where sports occur
+     * **name**: Name of the area
+     * **description**: Description of the area [optional]
+     * **size**: Number of concurrent games that can occur in the area (0 for unlimited)
+   * **sports**: List of sport objects
+     * **name**: Name of the sport
+     * **description**: Description of the sport [optional]
+     * **team-size**: Number of players in a team, 0 for unlimited
+     * **team-count**: Number of teams (default 2) [optional]
+     * **min-players**: The minimum players that need to sign up before the game can go [optional]
+     * **area**: Area where the sport is played. Omit if area not needed/used
+
 Sample configuration:
 ```
 {
@@ -16,6 +40,7 @@ Sample configuration:
     "admins": [
         "admin@example.com"
     ],
+    "default-host": "example.com",
     "locations": [
         {
             "name": "Office1",
@@ -42,7 +67,7 @@ Sample configuration:
                 },
                 {
                     "name": "ttd",
-                    "description": "Tabletennis singles",
+                    "description": "Tabletennis doubles",
                     "team-size": 2,
                     "area": "tabletennis"
                 },
