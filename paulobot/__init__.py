@@ -98,7 +98,7 @@ class Timer:
 
 
 class PauloBot:
-    def __init__(self, config_file=DEFAULT_CONFIG, log_level=logging.INFO):
+    def __init__(self, config_file=DEFAULT_CONFIG, log_level=logging.INFO, log_file=None):
         # Initialization order:
         #  1) Config, as this can control logging
         #  2) Logging, so modules can log
@@ -108,7 +108,7 @@ class PauloBot:
         self.config = Config(config_file)
         self.main_loop = asyncio.get_event_loop()
 
-        self._setup_logging(level=log_level)
+        self._setup_logging(level=log_level, log_file=log_file)
         self._webex = paulobot.webex.Client(self.config.token,
                                             on_message=self._on_message,
                                             on_room_join=self._on_room_join)
@@ -157,18 +157,21 @@ class PauloBot:
 
         return [u for u in users if u is not None]
 
-    def _setup_logging(self, logfile=None, level=logging.INFO):
-        if logfile:
-            logfile = os.path.expanduser(logfile)
-            logging.basicConfig(filename=logfile, level=level,
+    def _setup_logging(self, level=logging.INFO, log_file=None):
+        if log_file:
+            log_file = os.path.expanduser(log_file)
+            logging.basicConfig(filename=log_file, level=level,
                                 format=LOGGING_FORMAT,
-                                datefmt=LOGGING_DATE_FORMAT)
+                                datefmt=LOGGING_DATE_FORMAT,
+                                style="{")
             console = logging.StreamHandler()
             console.setLevel(level)
             console.setFormatter(
-                logging.Formatter(LOGGING_FORMAT, "%H:%M:%S", style="{"))
+                logging.Formatter(LOGGING_FORMAT,
+                                  LOGGING_DATE_FORMAT,
+                                  style="{"))
             logging.getLogger().addHandler(console)
-            logging.info("Logging to STDOUT and {}".format(logfile))
+            logging.info("Logging to STDOUT and {}".format(log_file))
         else:
             logging.basicConfig(level=level, format=LOGGING_FORMAT,
                                 datefmt=LOGGING_DATE_FORMAT,
@@ -258,9 +261,11 @@ def main(args):
         description="PauloBot: Office Sports Webex Teams Bot")
     parser.add_argument("-l", "--level", type=int, default=logging.INFO,
                         help="Logging level. Lower is more verbose.")
+    parser.add_argument("-L", "--logfile", default=None,
+                        help="File for logging output.")
     args = parser.parse_args(args)
     try:
-        PauloBot(log_level=args.level).run()
+        PauloBot(log_level=args.level, log_file=args.logfile).run()
     except KeyboardInterrupt:
         pass
     except ConfigError as e:
