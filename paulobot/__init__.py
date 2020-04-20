@@ -138,9 +138,9 @@ class PauloBot:
         if not room_id and not user_email:
             raise Exception("One of room_id or user_email must be specified!")
 
-        logging.info("Sending %s message to '%s'",
-                     "group" if room_id else "direct",
-                     self._webex.get_room_title(room_id) if room_id else user_email)
+        LOGGER.info("Sending %s message to '%s'",
+                    "group" if room_id else "direct",
+                    self._webex.get_room_title(room_id) if room_id else user_email)
         self._webex.call_api(False,
                              self._webex.api.messages.create,
                              roomId=room_id,
@@ -243,10 +243,10 @@ class PauloBot:
         match = re.search(TAG_REGEX, message.html)
         text = message.text
         if not match:
-            logging.info("Tag not found in %s", message.html)
+            LOGGER.info("Tag not found in %s", message.html)
         else:
             tag = match.group(1)
-            logging.debug("Found tag: %s", tag)
+            LOGGER.debug("Found tag: %s", tag)
             if text.startswith(tag):
                 text = text[len(tag):].lstrip()
             elif text.endswith(tag):
@@ -271,3 +271,6 @@ def main(args):
     except ConfigError as e:
         print(f"Config error: {e}", file=sys.stderr)
         sys.exit(1)
+    except:
+        LOGGER.exception("Got unhandled exception")
+        raise
