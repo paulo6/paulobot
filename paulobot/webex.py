@@ -214,6 +214,7 @@ class Client(object):
         while True:
             try:
                 main_loop.run_until_complete(_run())
-            except (websockets.exceptions.ConnectionClosedError, socket.gaierror) as e:
+            except (websockets.exceptions.WebSocketException,
+                    socket.gaierror) as e:
                 LOGGER.error("Connection error: %s. Retrying in 1s...", e)
                 time.sleep(1)
