@@ -27,7 +27,10 @@ DEVICE_DATA = {
 LOGGER = logging.getLogger(__name__)
 
 API_RETRIES = 2
-RETRY_DELAY = 0.5
+API_RETRY_DELAY = 0.5
+
+RECONNECT_DELAY = 5
+RECONNECT_LOG_AFTER = 10
 
 MAX_MESSAGE_LENGTH = 7439
 
@@ -88,7 +91,7 @@ class Client(object):
                 else:
                     LOGGER.error("API %s failed (%s), retrying (%s)...",
                                  api.__qualname__, e, attempt)
-                    time.sleep(RETRY_DELAY)
+                    time.sleep(API_RETRY_DELAY)
                     done = False
                     attempt += 1
 
@@ -187,9 +190,12 @@ class Client(object):
 
     def run(self, main_loop):
         self._run_prep()
+        failed_count = 0
         async def _run():
+            nonlocal failed_count
             LOGGER.info("Opening websocket connection to %s", self._device_info['webSocketUrl'])
             async with websockets.connect(self._device_info['webSocketUrl']) as ws:
+                failed_count = 0
                 LOGGER.info("Connection opened!")
                 msg = {
                     'id': str(uuid.uuid4()),
@@ -216,5 +222,12 @@ class Client(object):
                 main_loop.run_until_complete(_run())
             except (websockets.exceptions.WebSocketException,
                     socket.gaierror) as e:
-                LOGGER.error("Connection error: %s. Retrying in 1s...", e)
-                time.sleep(1)
+                failed_count += 1
+                # Only error log every certain number of attempts
+                if ((failed_count % RECONNECT_LOG_AFTER) == 0):
+                    log_fn = LOGGER.error
+                else:
+                    log_fn = LOGGER.warning
+                log_fn("Connection error: %s. Retry (%s) in %ss...", e,
+                       failed_count, RECONNECT_DELAY)
+                time.sleep(RECONNECT_DELAY)
