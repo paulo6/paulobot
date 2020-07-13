@@ -172,7 +172,7 @@ class Client(object):
                 if device['name'] == DEVICE_DATA['name']:
                     device_info = device
         except Exception as e:
-            LOGGER.error("Failed to get devices: %s", e)
+            LOGGER.warning("Failed to get devices: %s", e)
 
         if not device_info:
             LOGGER.info('Device does not exist, creating')
@@ -221,7 +221,8 @@ class Client(object):
             try:
                 main_loop.run_until_complete(_run())
             except (websockets.exceptions.WebSocketException,
-                    socket.gaierror) as e:
+                    socket.gaierror,
+                    ConnectionRefusedError) as e:
                 failed_count += 1
                 # Only error log every certain number of attempts
                 if ((failed_count % RECONNECT_LOG_AFTER) == 0):
