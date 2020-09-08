@@ -1,5 +1,7 @@
 # PauloBot
-Webex Teams Bot for organising office sports
+Webex Teams Bot for organising office sports.
+
+Currently a WIP - results recording and stats in development. Enough of the bot should be in place for simple organising of games.
 
 ## Setup
 
