@@ -11,6 +11,7 @@ import uuid
 from webexteamssdk import WebexTeamsAPI
 import webexteamssdk
 import logging
+from base64 import b64encode
 
 DEVICES_URL = 'https://wdm-a.wbx2.com/wdm/api/v1/devices'
 
@@ -33,6 +34,17 @@ RECONNECT_DELAY = 5
 RECONNECT_LOG_AFTER = 10
 
 MAX_MESSAGE_LENGTH = 7439
+
+
+# Something changed in the webex socket API, and now need to build a 'HYDRA ID'
+# from the ID in the notification in order to get a message ID.
+#
+# This fix is based on
+# https://github.com/marksull/err-backend-cisco-webex-teams/blob/master/CiscoWebexTeams.py
+#
+# TODO - Need to look at service catalog (somehow?) to determine cluster
+#        for now, static to us cluster
+HYDRA_PREFIX = "ciscospark://us"
 
 class ApiError(Exception):
     """
@@ -95,8 +107,25 @@ class Client(object):
                     done = False
                     attempt += 1
 
+    @staticmethod
+    def _build_hydra_id(uuid, message_type="MESSAGE"):
+        """
+        Convert a UUID into Hydra ID that includes geo routing
+        :param uuid: The UUID to be encoded
+        :param message_type: The type of message to be encoded
+        :return (str): The encoded uuid
+        """
+        return (
+            b64encode(f"{HYDRA_PREFIX}/{message_type}/{uuid}".encode("ascii")).decode(
+                "ascii"
+            )
+            if "-" in uuid
+            else uuid
+        )
+
     def _handle_post(self, activity):
-        message = self.call_api(True, self.api.messages.get, activity['id'])
+        message_id = self._build_hydra_id(activity['id'])
+        message = self.call_api(True, self.api.messages.get, message_id)
         if message.personEmail in self.my_emails:
             LOGGER.debug("Ignoring self message")
         else:
