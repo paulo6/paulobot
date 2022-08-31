@@ -164,14 +164,15 @@ class Client(object):
         action = self.call_api(True, self.api.attachment_actions.get, action_id)
         room = self.call_api(True, self.api.rooms.get, action.roomId)
         person = self.call_api(True, self.api.people.get, action.personId)
+        email = person.emails[0]
         LOGGER.info("Received %s action from %s (in '%s'), created %s, inputs: %s",
                     room.type,
-                    person.emails[0],
+                    email,
                     self.get_room_title(action.roomId),
                     action.created,
                     action.inputs)
         if self._on_card_action:
-            self._on_card_action(action, room, person)
+            self._on_card_action(action, room, email)
 
     def _handle_add(self, activity):
         # Only care about adds in groups for now, which can be detected by
