@@ -1,10 +1,11 @@
-import sys
+
 import json
 import requests
 import asyncio
 import time
 import socket
 import traceback
+from enum import Enum
 
 import websockets
 import uuid
@@ -37,7 +38,8 @@ MAX_MESSAGE_LENGTH = 7439
 
 
 # Something changed in the webex socket API, and now need to build a 'HYDRA ID'
-# from the ID in the notification in order to get a message ID.
+# from the ID in the notification in order to get a object ID (where object is
+# a message or room etc).
 #
 # This fix is based on
 # https://github.com/marksull/err-backend-cisco-webex-teams/blob/master/CiscoWebexTeams.py
@@ -45,6 +47,17 @@ MAX_MESSAGE_LENGTH = 7439
 # TODO - Need to look at service catalog (somehow?) to determine cluster
 #        for now, static to us cluster
 HYDRA_PREFIX = "ciscospark://us"
+
+class HydraTypes(Enum):
+    # https://github.com/webex/webex-js-sdk/blob/master/packages/node_modules/%40webex/common/src/constants.js#L62
+    ATTACHMENT_ACTION = "ATTACHMENT_ACTION"
+    CONTENT = "CONTENT"
+    MEMBERSHIP = "MEMBERSHIP"
+    MESSAGE = "MESSAGE"
+    ORGANIZATION = "ORGANIZATION"
+    PEOPLE = "PEOPLE"
+    ROOM = "ROOM"
+    TEAM = "TEAM"
 
 class ApiError(Exception):
     """
@@ -108,7 +121,7 @@ class Client(object):
                     attempt += 1
 
     @staticmethod
-    def _build_hydra_id(uuid, message_type="MESSAGE"):
+    def _build_hydra_id(uuid, message_type=HydraTypes.MESSAGE):
         """
         Convert a UUID into Hydra ID that includes geo routing
         :param uuid: The UUID to be encoded
@@ -116,7 +129,7 @@ class Client(object):
         :return (str): The encoded uuid
         """
         return (
-            b64encode(f"{HYDRA_PREFIX}/{message_type}/{uuid}".encode("ascii")).decode(
+            b64encode(f"{HYDRA_PREFIX}/{message_type.value}/{uuid}".encode("ascii")).decode(
                 "ascii"
             )
             if "-" in uuid
@@ -142,9 +155,12 @@ class Client(object):
         # Only care about adds in groups for now, which can be detected by
         # looking for email.
         if "emailAddress" not in activity["object"]:
+            LOGGER.info("Ignoring ADD")
             return
         email = activity["object"]["emailAddress"]
-        room = self.call_api(True, self.api.rooms.get, activity['target']['id'])
+        room_id = self._build_hydra_id(activity['target']['id'],
+                                       message_type=HydraTypes.ROOM)
+        room = self.call_api(True, self.api.rooms.get, room_id)
 
         LOGGER.info("Got ADD for %s in '%s'",
                     email, room.title)
@@ -157,13 +173,16 @@ class Client(object):
         # Only care about adds in groups for now, which can be detected by
         # looking for email.
         if "emailAddress" not in activity["object"]:
+            LOGGER.info("Ignoring LEAVE")
             return
         room = None
         email = activity["object"]["emailAddress"]
 
         # If we have left the room, can no longer lookup the room!
         if email not in self.my_emails:
-            room = self.call_api(True, self.api.rooms.get, activity['target']['id'])
+            room_id = self._build_hydra_id(activity['target']['id'],
+                                           message_type=HydraTypes.ROOM)
+            room = self.call_api(True, self.api.rooms.get, room_id)
 
         LOGGER.info("Got LEAVE for %s in '%s'",
                     email,
