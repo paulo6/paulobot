@@ -67,18 +67,21 @@ class ApiError(Exception):
     pass
 
 class Client(object):
-    def __init__(self, access_token, on_message=None,
+    def __init__(self, access_token,
+                 on_message=None, on_card_action=None,
                  on_room_join=None, on_room_leave=None):
         self.access_token = access_token
         self.api = WebexTeamsAPI(access_token=access_token)
         self.my_emails = []
         self._device_info = None
         self._on_message = on_message
+        self._on_card_action = on_card_action
         self._on_room_join = on_room_join
         self._on_room_leave = on_room_leave
         self._room_titles = {}
         self._verb_handlers = {
             "post": self._handle_post,
+            "cardAction": self._handle_card_action,
             "add": self._handle_add,
             "leave": self._handle_leave,
         }
@@ -150,6 +153,25 @@ class Client(object):
                         message.text)
             if self._on_message:
                 self._on_message(message)
+
+    def _handle_card_action(self, activity):
+        action_id = self._build_hydra_id(activity['id'],
+                                        HydraTypes.ATTACHMENT_ACTION)
+
+        # Lookup the action. The action does not have the room type nor the
+        # person email, so lookup the room and person objects and pass through
+        # to callback
+        action = self.call_api(True, self.api.attachment_actions.get, action_id)
+        room = self.call_api(True, self.api.rooms.get, action.roomId)
+        person = self.call_api(True, self.api.people.get, action.personId)
+        LOGGER.info("Received %s action from %s (in '%s'), created %s, inputs: %s",
+                    room.type,
+                    person.emails[0],
+                    self.get_room_title(action.roomId),
+                    action.created,
+                    action.inputs)
+        if self._on_card_action:
+            self._on_card_action(action, room, person)
 
     def _handle_add(self, activity):
         # Only care about adds in groups for now, which can be detected by
